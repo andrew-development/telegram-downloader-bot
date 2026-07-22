@@ -5,7 +5,7 @@ import asyncio
 import uuid
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import config
@@ -27,6 +27,16 @@ class BotStates(StatesGroup):
 pending_downloads = {}  # req_id -> {'url', 'title'}
 active_downloads = {}   # req_id -> {'cancelled': False}
 uploaded_files = {}     # file_req_id -> {'file_id', 'file_name', 'media_type'}
+
+def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
+    """Создает постоянную нижнюю клавиатуру над полем ввода сообщения"""
+    builder = ReplyKeyboardBuilder()
+    builder.button(text="🚀 Старт")
+    builder.button(text="📊 Статус")
+    if user_id in config.ADMIN_IDS:
+        builder.button(text="⚙️ Админ")
+    builder.adjust(3 if user_id in config.ADMIN_IDS else 2)
+    return builder.as_markup(resize_keyboard=True, persistent=True)
 
 async def check_user_subscription(user_id: int) -> tuple[bool, list[dict]]:
     if not config.REQUIRED_CHANNELS:
@@ -104,6 +114,18 @@ async def ensure_approved_access(event: types.Message | types.CallbackQuery) -> 
             
     return False
 
+@dp.message(F.text == "🚀 Старт")
+async def msg_btn_start(message: types.Message):
+    await cmd_start(message)
+
+@dp.message(F.text.in_({"📊 Статус", "📊 Статистика"}))
+async def msg_btn_stats(message: types.Message):
+    await cmd_stats(message)
+
+@dp.message(F.text == "⚙️ Админ")
+async def msg_btn_admin(message: types.Message):
+    await cmd_admin(message)
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -132,12 +154,13 @@ async def cmd_start(message: types.Message):
     if user_id in config.ADMIN_IDS:
         welcome_text += f"⚙️ `/admin` — Панель администратора\n"
         
+    reply_kb = get_main_reply_keyboard(user_id)
     if not is_sub:
         welcome_text += "\n⚠️ Пожалуйста, подпишитесь на каналы ниже для доступа:"
         await message.answer(welcome_text, reply_markup=get_subscription_keyboard(channels))
     else:
         welcome_text += "\n📥 Отправьте мне **ссылку**, **файл** или **текст для поиска**!"
-        await message.answer(welcome_text)
+        await message.answer(welcome_text, reply_markup=reply_kb)
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -249,7 +272,7 @@ async def cmd_stats(message: types.Message):
         for title, quality, size_mb, date in stats['recent']:
             text += f"• `{title[:30]}`... [{quality}] — {size_mb} МБ\n"
             
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, reply_markup=get_main_reply_keyboard(user_id), parse_mode="Markdown")
 
 # --- ОБРАБОТКА ЗАГРУЖЕННЫХ ПОЛЬЗОВАТЕЛЕМ ФАЙЛОВ (ВИДЕО/АУДИО) ---
 

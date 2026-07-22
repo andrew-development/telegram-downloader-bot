@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import aiohttp
 from aiohttp import web
 from bot import bot, dp
 from helper import helper_app
@@ -29,9 +30,26 @@ async def start_web_server():
     await site.start()
     logger.info(f"🌐 Веб-сервер проверки здоровья успешно запущен на порту {port}")
 
+async def keep_alive_ping():
+    """Фоновый пинг 24/7 для предотвращения ухода Render в спящий режим"""
+    url = os.getenv("RENDER_EXTERNAL_URL", "https://telegram-downloader-bot-zxyq.onrender.com")
+    logger.info(f"🔄 Запуск 24/7 Keep-Alive пингера для {url}...")
+    await asyncio.sleep(15)
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(url, timeout=10) as resp:
+                    logger.info(f"💓 Keep-Alive ping status: {resp.status}")
+            except Exception as e:
+                logger.warning(f"⚠️ Keep-Alive ping warning: {e}")
+            await asyncio.sleep(300) # пинг каждые 5 минут
+
 async def main():
     # 1. ПЕРВЫМ ДЕЛОМ запускаем веб-сервер для Render Health Check
     await start_web_server()
+    
+    # 2. Запускаем фоновый 24/7 пингер
+    asyncio.create_task(keep_alive_ping())
     
     if not config.BOT_TOKEN or config.BOT_TOKEN == "your_bot_token_here":
         logger.error("❌ Заполните BOT_TOKEN!")
@@ -44,7 +62,7 @@ async def main():
     try:
         database.init_db()
     except Exception as db_e:
-        logger.error(f" Ошибка БД: {db_e}")
+        logger.error(f"❌ Ошибка БД: {db_e}")
 
     logger.info("Запуск юзербота-помощника...")
     helper_started = False
