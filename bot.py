@@ -56,21 +56,33 @@ def get_subscription_keyboard(channels: list[dict]) -> types.InlineKeyboardMarku
     builder.adjust(1)
     return builder.as_markup()
 
-async def ensure_approved_access(message: types.Message) -> bool:
-    user_id = message.from_user.id
-    username = message.from_user.username or ""
-    first_name = message.from_user.first_name or ""
-    
+async def ensure_approved_access(event: types.Message | types.CallbackQuery) -> bool:
+    if isinstance(event, types.CallbackQuery):
+        user_id = event.from_user.id
+        username = event.from_user.username or ""
+        first_name = event.from_user.first_name or ""
+        target_msg = event.message
+    else:
+        user_id = event.from_user.id
+        username = event.from_user.username or ""
+        first_name = event.from_user.first_name or ""
+        target_msg = event
+
+    # АДМИНИСТРАТОР ВСЕГДА ОДОБРЕН БЕЗ КАКИХ-ЛИБО ПОДТВЕРЖДЕНИЙ
+    if user_id in config.ADMIN_IDS:
+        return True
+
     is_approved = database.add_user(user_id, username, first_name)
     if is_approved:
         return True
         
-    await message.answer(
-        "🔒 **Доступ ограничен.**\n\n"
-        "Ваш запрос на использование бота отправлен Администратору.\n"
-        "Пожалуйста, подождите подтверждения доступа.",
-        parse_mode="Markdown"
-    )
+    if target_msg:
+        await target_msg.answer(
+            "🔒 **Доступ ограничен.**\n\n"
+            "Ваш запрос на использование бота отправлен Администратору.\n"
+            "Пожалуйста, подождите подтверждения доступа.",
+            parse_mode="Markdown"
+        )
     
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Разрешить доступ", callback_data=f"adm_allow:{user_id}")
@@ -451,7 +463,7 @@ async def handle_search_query(message: types.Message):
 
 @dp.callback_query(F.data.startswith("thumb:"))
 async def cb_download_thumb(callback: types.CallbackQuery):
-    if not await ensure_approved_access(callback.message):
+    if not await ensure_approved_access(callback):
         return
     _, req_id = callback.data.split(":")
     if req_id not in pending_downloads:
@@ -536,7 +548,7 @@ async def cb_cancel(callback: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("q:"))
 async def cb_download(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    if not await ensure_approved_access(callback.message):
+    if not await ensure_approved_access(callback):
         return
         
     is_sub, channels = await check_user_subscription(user_id)

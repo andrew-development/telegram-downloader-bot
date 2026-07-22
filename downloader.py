@@ -98,7 +98,7 @@ def compress_video_for_bot_api(input_path: str) -> str:
             cmd = [
                 'ffmpeg', '-y', '-i', input_path,
                 '-fs', '47M',
-                '-c:v', 'libx264', '-crf', '26', '-preset', 'ultrafast',
+                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '26', '-preset', 'ultrafast',
                 '-c:a', 'aac', '-b:a', '128k',
                 out_path
             ]
