@@ -612,7 +612,7 @@ async def cb_download(callback: types.CallbackQuery):
         await callback.message.edit_text(f"📤 Загружаю файл в Telegram ({file_size_mb} МБ)...")
         caption = f"✅ **{title}** [{quality}]"
         
-        if file_size <= 50 * 1024 * 1024:
+        if file_size <= 49 * 1024 * 1024:
             input_file = types.FSInputFile(file_path)
             ext = os.path.splitext(file_path)[1].lower()
             if ext in ['.mp4', '.mkv', '.mov', '.avi']:
