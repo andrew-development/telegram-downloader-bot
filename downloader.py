@@ -86,7 +86,7 @@ def get_video_dimensions(file_path: str) -> tuple:
     return None, None
 
 def ensure_ios_compatibility(input_path: str) -> str:
-    """Обеспечивает 100% плавное воспроизведение видео на iPhone (faststart + yuv420p)"""
+    """Обеспечивает 100% плавное воспроизведение видео на iPhone (faststart + yuv420p + чётные четные разрешения)"""
     if not os.path.exists(input_path):
         return input_path
     ext = os.path.splitext(input_path)[1].lower()
@@ -96,13 +96,14 @@ def ensure_ios_compatibility(input_path: str) -> str:
     out_path = os.path.splitext(input_path)[0] + "_ios.mp4"
     cmd = [
         'ffmpeg', '-y', '-i', input_path,
+        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
         '-movflags', '+faststart',
         '-preset', 'ultrafast',
         '-c:a', 'aac', '-b:a', '128k',
         out_path
     ]
-    res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
         try:
             os.remove(input_path)
@@ -124,20 +125,20 @@ def compress_video_for_bot_api(input_path: str) -> str:
             cmd = [
                 'ffmpeg', '-y', '-i', input_path,
                 '-fs', '47M',
+                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
                 '-movflags', '+faststart',
                 '-crf', '26', '-preset', 'ultrafast',
                 '-c:a', 'aac', '-b:a', '128k',
                 out_path
             ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
                 try:
                     os.remove(input_path)
                 except Exception:
                     pass
                 return out_path
-    # Для всех остальных MP4 файлов гарантируем совместимость с iOS
     return ensure_ios_compatibility(input_path)
 
 def download_media(url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None, time_range: str = None) -> str:
@@ -145,21 +146,26 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
     file_id = str(uuid.uuid4())
     
     def ytdlp_progress_hook(d):
-        if cancel_check_callback and cancel_check_callback():
-            raise yt_dlp.utils.DownloadCancelled("Скачивание отменено пользователем.")
-            
-        if d['status'] == 'downloading' and progress_callback:
-            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-            downloaded = d.get('downloaded_bytes', 0)
-            speed = d.get('speed', 0)
-            percent = (downloaded / total * 100) if total > 0 else 0
-            
-            progress_callback({
-                'percent': percent,
-                'downloaded_mb': round(downloaded / (1024 * 1024), 1),
-                'total_mb': round(total / (1024 * 1024), 1) if total > 0 else 0,
-                'speed_mb': round(speed / (1024 * 1024), 1) if speed else 0
-            })
+        try:
+            if cancel_check_callback and cancel_check_callback():
+                raise yt_dlp.utils.DownloadCancelled("Скачивание отменено пользователем.")
+                
+            if d['status'] == 'downloading' and progress_callback:
+                total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                downloaded = d.get('downloaded_bytes', 0)
+                speed = d.get('speed', 0)
+                percent = (downloaded / total * 100) if total > 0 else 0
+                
+                progress_callback({
+                    'percent': percent,
+                    'downloaded_mb': round(downloaded / (1024 * 1024), 1),
+                    'total_mb': round(total / (1024 * 1024), 1) if total > 0 else 0,
+                    'speed_mb': round(speed / (1024 * 1024), 1) if speed else 0
+                })
+        except Exception as pe:
+            if isinstance(pe, yt_dlp.utils.DownloadCancelled):
+                raise pe
+            pass
 
     out_template = os.path.join(DOWNLOAD_TEMP_DIR, f"{file_id}.%(ext)s")
     
