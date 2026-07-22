@@ -173,6 +173,8 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': out_template,
+            'restrictfilenames': True,
+            'trim_file_name': 20,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -194,6 +196,8 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
             'outtmpl': out_template,
+            'restrictfilenames': True,
+            'trim_file_name': 20,
             'progress_hooks': [ytdlp_progress_hook],
             'quiet': True,
             'no_warnings': True,
