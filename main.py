@@ -4,7 +4,7 @@ import os
 import sys
 import aiohttp
 from aiohttp import web
-from bot import bot, dp
+from bot import bot, dp, setup_bot_commands
 from helper import helper_app
 import database
 import config
@@ -75,12 +75,18 @@ async def main():
         logger.error(f"⚠️ Юзербот не смог запуститься: {he}. Основной бот продолжит работу для файлов до 50 МБ.")
 
     try:
-        logger.info("Запуск основного бота Telegram...")
-        await bot.delete_webhook(drop_pending_updates=True)
-        await setup_bot_commands()
-        await dp.start_polling(bot)
-    except Exception as be:
-        logger.error(f"❌ Критическая ошибка основного бота: {be}")
+        # Бесконечный цикл с авто-перезапуском polling при любых сетевых сбоях
+        while True:
+            try:
+                logger.info("🚀 Запуск основного бота Telegram (Long-Polling)...")
+                await bot.delete_webhook(drop_pending_updates=False)
+                await setup_bot_commands()
+                await dp.start_polling(bot, handle_signals=False)
+            except Exception as be:
+                logger.error(f"⚠️ Сбой сети или сессии polling: {be}. Автоматический перезапуск через 3 секунды...")
+                await asyncio.sleep(3)
+    except Exception as fatal_e:
+        logger.error(f"❌ Критическая ошибка основного бота: {fatal_e}")
     finally:
         if helper_started:
             logger.info("Остановка юзербота-помощника...")
