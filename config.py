@@ -4,7 +4,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-API_ID = os.getenv("API_ID")
+
+api_id_raw = os.getenv("API_ID")
+API_ID = int(api_id_raw) if api_id_raw and api_id_raw.isdigit() else api_id_raw
+
 API_HASH = os.getenv("API_HASH")
 
 # Список Telegram ID администраторов (твой ID: 340174720)
