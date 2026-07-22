@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from aiohttp import web
 from bot import bot, dp
 from helper import helper_app
@@ -29,7 +30,7 @@ async def start_web_server():
     logger.info(f"🌐 Веб-сервер проверки здоровья успешно запущен на порту {port}")
 
 async def main():
-    # 1. ПЕРВЫМ ДЕЛОМ запускаем веб-сервер, чтобы Render моментально прошел Health Check!
+    # 1. ПЕРВЫМ ДЕЛОМ запускаем веб-сервер для Render Health Check
     await start_web_server()
     
     if not config.BOT_TOKEN or config.BOT_TOKEN == "your_bot_token_here":
@@ -40,24 +41,40 @@ async def main():
         return
         
     logger.info("Инициализация базы данных...")
-    database.init_db()
+    try:
+        database.init_db()
+    except Exception as db_e:
+        logger.error(f" Ошибка БД: {db_e}")
 
     logger.info("Запуск юзербота-помощника...")
-    await helper_app.start()
-    
-    me = await helper_app.get_me()
-    logger.info(f"✅ Юзербот-помощник запущен под аккаунтом: @{me.username or me.first_name} (ID: {me.id})")
+    helper_started = False
+    try:
+        await helper_app.start()
+        me = await helper_app.get_me()
+        logger.info(f"✅ Юзербот-помощник запущен под аккаунтом: @{me.username or me.first_name} (ID: {me.id})")
+        helper_started = True
+    except Exception as he:
+        logger.error(f"⚠️ Юзербот не смог запуститься: {he}. Основной бот продолжит работу для файлов до 50 МБ.")
 
     try:
         logger.info("Запуск основного бота Telegram...")
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
+    except Exception as be:
+        logger.error(f"❌ Критическая ошибка основного бота: {be}")
     finally:
-        logger.info("Остановка юзербота-помощника...")
-        await helper_app.stop()
+        if helper_started:
+            logger.info("Остановка юзербота-помощника...")
+            try:
+                await helper_app.stop()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Бот остановлен вручную.")
+    except Exception as uncaught:
+        logger.error(f"❌ Неперехваченное исключение: {uncaught}")
+        sys.exit(1)
