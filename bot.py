@@ -616,7 +616,8 @@ async def cb_download(callback: types.CallbackQuery):
             input_file = types.FSInputFile(file_path)
             ext = os.path.splitext(file_path)[1].lower()
             if ext in ['.mp4', '.mkv', '.mov', '.avi']:
-                w, h = downloader.get_video_dimensions(file_path)
+                get_dim = getattr(downloader, 'get_video_dimensions', None)
+                w, h = get_dim(file_path) if callable(get_dim) else (None, None)
                 await bot.send_video(
                     chat_id=user_id,
                     video=input_file,

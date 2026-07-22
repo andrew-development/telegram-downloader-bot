@@ -67,15 +67,33 @@ def download_thumbnail(url: str) -> str:
         return output_path
     raise ValueError("Не удалось скачать обложку.")
 
+def get_video_dimensions(file_path: str) -> tuple:
+    """Возвращает (width, height) видео для точной ориентации в Telegram"""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'csv=s=x:p=0',
+            file_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0 and res.stdout.strip():
+            w, h = res.stdout.strip().split('x')
+            return int(w), int(h)
+    except Exception:
+        pass
+    return None, None
+
 def compress_video_for_bot_api(input_path: str) -> str:
-    """Если файл от 48 МБ до 100 МБ, сжимает его под 48 МБ для мгновенной отправки через Bot API"""
+    """Сжимает видео до 47 МБ, сохраняя точный пропорциональный размер картинки"""
     if not os.path.exists(input_path):
         return input_path
     size = os.path.getsize(input_path)
     if 48 * 1024 * 1024 < size <= 100 * 1024 * 1024:
         ext = os.path.splitext(input_path)[1].lower()
         if ext in ['.mp4', '.mkv', '.mov', '.avi']:
-            logger.info(f"Сжатие файла {input_path} ({round(size/(1024*1024),1)} МБ) до 48 МБ для мгновенной отправки...")
+            logger.info(f"Сжатие файла {input_path} ({round(size/(1024*1024),1)} МБ) до 47 МБ...")
             out_path = os.path.splitext(input_path)[0] + "_compressed.mp4"
             cmd = [
                 'ffmpeg', '-y', '-i', input_path,
