@@ -1,19 +1,34 @@
 import asyncio
 import logging
+import os
+from aiohttp import web
 from bot import bot, dp
 from helper import helper_app
 import database
 import config
 
-# Настройка детального логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+async def handle_healthcheck(request):
+    """Простой эндпоинт для проверки работы хостингом Render"""
+    return web.Response(text="Telegram Bot is alive and running!")
+
+async def start_web_server():
+    """Запускает мини веб-сервер на порту PORT (требуется для бесплатного плана Render)"""
+    port = int(os.getenv("PORT", 8080))
+    app = web.Application()
+    app.router.add_get('/', handle_healthcheck)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logger.info(f"🌐 Веб-сервер проверки здоровья запущен на порту {port}")
+
 async def main():
-    # 1. Проверяем корректность конфигурации
     if not config.BOT_TOKEN or config.BOT_TOKEN == "your_bot_token_here":
         logger.error("❌ Заполните BOT_TOKEN в файле .env!")
         return
@@ -21,27 +36,23 @@ async def main():
         logger.error("❌ Заполните API_ID и API_HASH в файле .env!")
         return
         
-    # 2. Инициализируем базу данных
     logger.info("Инициализация базы данных...")
     database.init_db()
 
-    # 3. Запуск юзербота-помощника
     logger.info("Запуск юзербота-помощника...")
-    # При первом запуске в терминале появится запрос на ввод телефона и кода подтверждения
     await helper_app.start()
     
-    # Проверяем успешность входа
     me = await helper_app.get_me()
     logger.info(f"✅ Юзербот-помощник запущен под аккаунтом: @{me.username or me.first_name} (ID: {me.id})")
 
+    # Запускаем веб-сервер для поддержки бесплатного плана Render Web Service ($0/mo)
+    await start_web_server()
+
     try:
-        # 4. Запуск основного бота (aiogram)
         logger.info("Запуск основного бота Telegram...")
-        # Сбрасываем старые обновления, накопившиеся пока бот был оффлайн
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
-        # 5. Гарантированно выключаем юзербота при остановке скрипта
         logger.info("Остановка юзербота-помощника...")
         await helper_app.stop()
 
