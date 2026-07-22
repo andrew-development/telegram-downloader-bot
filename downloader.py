@@ -1,100 +1,109 @@
 import os
+import uuid
+import time
+import logging
 import subprocess
 import yt_dlp
-import uuid
-import logging
-import requests
 from config import DOWNLOAD_TEMP_DIR
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DownloadCancelledError(Exception):
     pass
 
-def get_video_info(url: str):
-    """Базовая информация о видео"""
+def get_video_info(url: str) -> dict:
+    """Получает информацию о видео (название, доступные форматы)"""
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'skip_download': True,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'Без названия')
-            duration = info.get('duration', 0)
-            thumbnail = info.get('thumbnail')
-            return {
-                'title': title,
-                'duration': duration,
-                'thumbnail': thumbnail,
-                'url': url,
-            }
-        except Exception as e:
-            logger.error(f"Ошибка при извлечении информации для {url}: {e}")
-            raise e
+        info = ydl.extract_info(url, download=False)
+        return {
+            'title': info.get('title', 'Без названия'),
+            'duration': info.get('duration', 0),
+            'thumbnail': info.get('thumbnail', None),
+            'formats': info.get('formats', [])
+        }
 
-def search_youtube(query: str, limit: int = 5) -> list[dict]:
-    """Поиск видео на YouTube по поисковому запросу"""
+def search_youtube(query: str, limit: int = 5) -> list:
+    """Ищет видео на YouTube по ключевым словам"""
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'extract_flat': 'in_playlist',
-        'skip_download': True,
+        'default_search': 'ytsearch',
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
-    search_url = f"ytsearch{limit}:{query}"
-    results = []
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(search_url, download=False)
-            entries = info.get('entries', [])
-            for entry in entries:
-                if entry:
-                    v_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
-                    results.append({
-                        'title': entry.get('title', 'Без названия'),
-                        'url': v_url,
-                        'duration': entry.get('duration', 0)
-                    })
-        except Exception as e:
-            logger.error(f"Ошибка при поиске на YouTube для '{query}': {e}")
-    return results
+    with yt_dlp.YoutubeDL(f"ytsearch{limit}:{query}", ydl_opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+        results = []
+        entries = info.get('entries', [])
+        for entry in entries:
+            if entry:
+                results.append({
+                    'title': entry.get('title', 'Без названия'),
+                    'url': f"https://www.youtube.com/watch?v={entry.get('id')}",
+                    'duration': entry.get('duration', 0)
+                })
+        return results
 
 def download_thumbnail(url: str) -> str:
-    """Скачивает обложку/превью видео в максимальном разрешении"""
+    """Скачивает обложку (превью) видео"""
     info = get_video_info(url)
     thumb_url = info.get('thumbnail')
     if not thumb_url:
-        raise ValueError("Обложка для данного видео не найдена.")
+        raise ValueError("Обложка не найдена.")
         
     file_id = str(uuid.uuid4())
-    save_path = os.path.join(DOWNLOAD_TEMP_DIR, f"thumb_{file_id}.jpg")
+    output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"thumb_{file_id}.jpg")
     
-    resp = requests.get(thumb_url, headers={
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }, timeout=15)
-    
-    if resp.status_code == 200:
-        with open(save_path, 'wb') as f:
-            f.write(resp.content)
-        return save_path
-    else:
-        raise Exception(f"Не удалось скачать обложку, статус: {resp.status_code}")
+    import requests
+    response = requests.get(thumb_url, timeout=15)
+    if response.status_code == 200:
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+        return output_path
+    raise ValueError("Не удалось скачать обложку.")
 
-def download_media(url: str, quality: str, progress_callback=None, cancel_checker=None, time_range: str = None) -> str:
-    """Скачивает медиафайл или указанный временной отрезок"""
+def compress_video_for_bot_api(input_path: str) -> str:
+    """Если файл от 48 МБ до 100 МБ, сжимает его под 48 МБ для мгновенной отправки через Bot API"""
+    if not os.path.exists(input_path):
+        return input_path
+    size = os.path.getsize(input_path)
+    if 48 * 1024 * 1024 < size <= 100 * 1024 * 1024:
+        ext = os.path.splitext(input_path)[1].lower()
+        if ext in ['.mp4', '.mkv', '.mov', '.avi']:
+            logger.info(f"Сжатие файла {input_path} ({round(size/(1024*1024),1)} МБ) до 48 МБ для мгновенной отправки...")
+            out_path = os.path.splitext(input_path)[0] + "_compressed.mp4"
+            cmd = [
+                'ffmpeg', '-y', '-i', input_path,
+                '-fs', '47M',
+                '-c:v', 'libx264', '-crf', '26', '-preset', 'ultrafast',
+                '-c:a', 'aac', '-b:a', '128k',
+                out_path
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                try:
+                    os.remove(input_path)
+                except Exception:
+                    pass
+                return out_path
+    return input_path
+
+def download_media(url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None, time_range: str = None) -> str:
+    """Скачивает медиа по ссылке с отслеживанием прогресса и отмены"""
     file_id = str(uuid.uuid4())
     
     def ytdlp_progress_hook(d):
-        if cancel_checker and cancel_checker():
-            raise yt_dlp.utils.DownloadCancelled("Скачивание отменено пользователем")
+        if cancel_check_callback and cancel_check_callback():
+            raise yt_dlp.utils.DownloadCancelled("Скачивание отменено пользователем.")
             
         if d['status'] == 'downloading' and progress_callback:
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
             downloaded = d.get('downloaded_bytes', 0)
-            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
             speed = d.get('speed', 0)
             percent = (downloaded / total * 100) if total > 0 else 0
             
@@ -158,6 +167,8 @@ def download_media(url: str, quality: str, progress_callback=None, cancel_checke
             if not final_path or not os.path.exists(final_path):
                 raise FileNotFoundError("Скачанный файл не был найден на диске.")
                 
+            # Оптимизация для мгновенной отправки видео от 48 до 100 МБ
+            final_path = compress_video_for_bot_api(final_path)
             return final_path
             
         except yt_dlp.utils.DownloadCancelled:
@@ -180,7 +191,6 @@ def trim_local_file(input_path: str, time_range: str) -> str:
     file_id = str(uuid.uuid4())
     output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"trimmed_{file_id}{ext}")
     
-    # Попытка вырезки без перекодировки (-c copy) — происходит мгновенно
     cmd = [
         'ffmpeg', '-y',
         '-ss', str(start_sec),
@@ -191,7 +201,6 @@ def trim_local_file(input_path: str, time_range: str) -> str:
     ]
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0 or not os.path.exists(output_path):
-        # Если без перекодировки не вышло, делаем точную перекодировку
         cmd = [
             'ffmpeg', '-y',
             '-ss', str(start_sec),
