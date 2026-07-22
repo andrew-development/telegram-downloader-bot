@@ -56,7 +56,7 @@ def download_thumbnail(url: str) -> str:
     if not thumb_url:
         raise ValueError("Обложка не найдена.")
         
-    file_id = str(uuid.uuid4())
+    file_id = str(uuid.uuid4().hex)
     output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"thumb_{file_id}.jpg")
     
     import requests
@@ -85,35 +85,8 @@ def get_video_dimensions(file_path: str) -> tuple:
         pass
     return None, None
 
-def ensure_ios_compatibility(input_path: str) -> str:
-    """Обеспечивает 100% плавное воспроизведение видео на iPhone (faststart + yuv420p + чётные четные разрешения)"""
-    if not os.path.exists(input_path):
-        return input_path
-    ext = os.path.splitext(input_path)[1].lower()
-    if ext not in ['.mp4', '.mkv', '.mov', '.avi']:
-        return input_path
-        
-    out_path = os.path.splitext(input_path)[0] + "_ios.mp4"
-    cmd = [
-        'ffmpeg', '-y', '-i', input_path,
-        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
-        '-movflags', '+faststart',
-        '-preset', 'ultrafast',
-        '-c:a', 'aac', '-b:a', '128k',
-        out_path
-    ]
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-        try:
-            os.remove(input_path)
-        except Exception:
-            pass
-        return out_path
-    return input_path
-
 def compress_video_for_bot_api(input_path: str) -> str:
-    """Сжимает видео до 47 МБ для мгновенной отправки, с поддержкой iOS faststart"""
+    """Сжимает видео от 48 МБ до 100 МБ до 47 МБ для мгновенной отправки через Bot API"""
     if not os.path.exists(input_path):
         return input_path
     size = os.path.getsize(input_path)
@@ -132,18 +105,18 @@ def compress_video_for_bot_api(input_path: str) -> str:
                 '-c:a', 'aac', '-b:a', '128k',
                 out_path
             ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
                 try:
                     os.remove(input_path)
                 except Exception:
                     pass
                 return out_path
-    return ensure_ios_compatibility(input_path)
+    return input_path
 
 def download_media(url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None, time_range: str = None) -> str:
     """Скачивает медиа по ссылке с отслеживанием прогресса и отмены"""
-    file_id = str(uuid.uuid4())
+    file_id = str(uuid.uuid4().hex)
     
     def ytdlp_progress_hook(d):
         try:
@@ -173,8 +146,6 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': out_template,
-            'restrictfilenames': True,
-            'trim_file_name': 20,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -196,8 +167,6 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
             'outtmpl': out_template,
-            'restrictfilenames': True,
-            'trim_file_name': 20,
             'progress_hooks': [ytdlp_progress_hook],
             'quiet': True,
             'no_warnings': True,
@@ -224,7 +193,6 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             if not final_path or not os.path.exists(final_path):
                 raise FileNotFoundError("Скачанный файл не был найден на диске.")
                 
-            # Оптимизация и принудительный faststart для iOS
             final_path = compress_video_for_bot_api(final_path)
             return final_path
             
@@ -245,7 +213,7 @@ def trim_local_file(input_path: str, time_range: str) -> str:
         raise ValueError("Время окончания должно быть больше времени начала.")
         
     ext = os.path.splitext(input_path)[1].lower()
-    file_id = str(uuid.uuid4())
+    file_id = str(uuid.uuid4().hex)
     output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"trimmed_{file_id}{ext}")
     
     cmd = [
@@ -271,7 +239,7 @@ def trim_local_file(input_path: str, time_range: str) -> str:
 
 def convert_local_to_mp3(input_path: str) -> str:
     """Конвертирует локальный медиафайл (видео/аудио) в MP3"""
-    file_id = str(uuid.uuid4())
+    file_id = str(uuid.uuid4().hex)
     output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"audio_{file_id}.mp3")
     cmd = [
         'ffmpeg', '-y',
