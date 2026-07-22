@@ -14,11 +14,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 async def handle_healthcheck(request):
-    """Простой эндпоинт для проверки работы хостингом Render"""
-    return web.Response(text="Telegram Bot is alive and running!")
+    """Простой эндпоинт для проверки работы хостингом Render (HTTP 200 OK)"""
+    return web.Response(text="Telegram Bot is alive and running!", status=200)
 
 async def start_web_server():
-    """Запускает мини веб-сервер на порту PORT (требуется для бесплатного плана Render)"""
+    """Запускает мини веб-сервер на порту PORT мгновенно при старте"""
     port = int(os.getenv("PORT", 8080))
     app = web.Application()
     app.router.add_get('/', handle_healthcheck)
@@ -26,14 +26,17 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logger.info(f"🌐 Веб-сервер проверки здоровья запущен на порту {port}")
+    logger.info(f"🌐 Веб-сервер проверки здоровья успешно запущен на порту {port}")
 
 async def main():
+    # 1. ПЕРВЫМ ДЕЛОМ запускаем веб-сервер, чтобы Render моментально прошел Health Check!
+    await start_web_server()
+    
     if not config.BOT_TOKEN or config.BOT_TOKEN == "your_bot_token_here":
-        logger.error("❌ Заполните BOT_TOKEN в файле .env!")
+        logger.error("❌ Заполните BOT_TOKEN!")
         return
     if not config.API_ID or config.API_ID == "your_api_id_here" or not config.API_HASH or config.API_HASH == "your_api_hash_here":
-        logger.error("❌ Заполните API_ID и API_HASH в файле .env!")
+        logger.error("❌ Заполните API_ID и API_HASH!")
         return
         
     logger.info("Инициализация базы данных...")
@@ -44,9 +47,6 @@ async def main():
     
     me = await helper_app.get_me()
     logger.info(f"✅ Юзербот-помощник запущен под аккаунтом: @{me.username or me.first_name} (ID: {me.id})")
-
-    # Запускаем веб-сервер для поддержки бесплатного плана Render Web Service ($0/mo)
-    await start_web_server()
 
     try:
         logger.info("Запуск основного бота Telegram...")
