@@ -427,14 +427,15 @@ async def cb_local_mp3(callback: types.CallbackQuery):
 
 # --- ОБРАБОТКА ССЫЛОК И ПОИСКА ---
 
-@dp.message(F.text.startswith("http://") | F.text.startswith("https://"))
+@dp.message(F.text.startswith(("http://", "https://")))
 async def handle_link(message: types.Message):
+    user_id = message.from_user.id
+    url = message.text.strip()
+    logger.info(f"🔗 Получена ссылка от пользователя ID {user_id}: {url}")
+    
     if not await ensure_approved_access(message):
         return
         
-    user_id = message.from_user.id
-    url = message.text.strip()
-    
     is_sub, channels = await check_user_subscription(user_id)
     if not is_sub:
         await message.answer("⚠️ Для скачивания подпишитесь на каналы:", reply_markup=get_subscription_keyboard(channels))
