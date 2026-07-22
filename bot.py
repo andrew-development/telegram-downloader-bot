@@ -427,7 +427,10 @@ async def handle_link(message: types.Message):
         await message.answer("⚠️ Для скачивания подпишитесь на каналы:", reply_markup=get_subscription_keyboard(channels))
         return
         
-    status_msg = await message.answer("🔍 Анализирую ссылку, подождите...")
+    status_msg = await message.answer(
+        "🔍 Анализирую ссылку, подождите...",
+        reply_markup=get_main_reply_keyboard(user_id)
+    )
     
     try:
         info = await asyncio.to_thread(downloader.get_video_info, url)
@@ -461,7 +464,11 @@ async def handle_search_query(message: types.Message):
         return
         
     query = message.text.strip()
-    status_msg = await message.answer(f"🔍 Ищу на YouTube: **{query}**...", parse_mode="Markdown")
+    status_msg = await message.answer(
+        f"🔍 Ищу на YouTube: **{query}**...",
+        reply_markup=get_main_reply_keyboard(message.from_user.id),
+        parse_mode="Markdown"
+    )
     
     results = await asyncio.to_thread(downloader.search_youtube, query, 5)
     if not results:

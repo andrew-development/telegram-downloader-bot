@@ -12,20 +12,30 @@ class DownloadCancelledError(Exception):
     pass
 
 def get_video_info(url: str) -> dict:
-    """Получает информацию о видео (название, доступные форматы)"""
+    """Получает информацию о видео (название, доступные форматы) с авто-повторами"""
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
+        'socket_timeout': 30,
+        'retries': 5,
+        'fragment_retries': 5,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        return {
-            'title': info.get('title', 'Без названия'),
-            'duration': info.get('duration', 0),
-            'thumbnail': info.get('thumbnail', None),
-            'formats': info.get('formats', [])
-        }
+    last_exc = None
+    for attempt in range(3):
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                return {
+                    'title': info.get('title', 'Без названия'),
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail', None),
+                    'formats': info.get('formats', [])
+                }
+        except Exception as e:
+            last_exc = e
+            time.sleep(1)
+    raise last_exc
 
 def search_youtube(query: str, limit: int = 5) -> list:
     """Ищет видео на YouTube по ключевым словам"""
