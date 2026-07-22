@@ -77,6 +77,7 @@ async def main():
     try:
         logger.info("Запуск основного бота Telegram...")
         await bot.delete_webhook(drop_pending_updates=True)
+        await setup_bot_commands()
         await dp.start_polling(bot)
     except Exception as be:
         logger.error(f"❌ Критическая ошибка основного бота: {be}")

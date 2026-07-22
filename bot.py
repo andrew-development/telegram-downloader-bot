@@ -38,6 +38,19 @@ def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
     builder.adjust(3 if user_id in config.ADMIN_IDS else 2)
     return builder.as_markup(resize_keyboard=True, persistent=True)
 
+async def setup_bot_commands():
+    """Устанавливает официальное меню команд Telegram (кнопка '/' слева от строки ввода)"""
+    commands = [
+        types.BotCommand(command="start", description="🚀 Перезапуск и главное меню"),
+        types.BotCommand(command="stats", description="📊 Ваша статистика скачиваний"),
+        types.BotCommand(command="admin", description="⚙️ Панель администратора"),
+    ]
+    try:
+        await bot.set_my_commands(commands)
+        logger.info("✅ Официальное меню команд Telegram успешно зарегистрировано!")
+    except Exception as e:
+        logger.error(f" Ошибка установки команд бота: {e}")
+
 async def check_user_subscription(user_id: int) -> tuple[bool, list[dict]]:
     if not config.REQUIRED_CHANNELS:
         return True, []
