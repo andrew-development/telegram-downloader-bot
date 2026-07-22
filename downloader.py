@@ -12,17 +12,17 @@ class DownloadCancelledError(Exception):
     pass
 
 def get_video_info(url: str) -> dict:
-    """Получает информацию о видео (название, доступные форматы) с авто-повторами"""
+    """Получает информацию о видео (название, доступные форматы) с быстрым таймаутом"""
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'socket_timeout': 30,
-        'retries': 5,
-        'fragment_retries': 5,
+        'socket_timeout': 10,
+        'retries': 2,
+        'fragment_retries': 2,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
     last_exc = None
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -34,7 +34,7 @@ def get_video_info(url: str) -> dict:
                 }
         except Exception as e:
             last_exc = e
-            time.sleep(1)
+            time.sleep(0.5)
     raise last_exc
 
 def search_youtube(query: str, limit: int = 5) -> list:

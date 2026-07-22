@@ -427,7 +427,7 @@ async def cb_local_mp3(callback: types.CallbackQuery):
 
 # --- ОБРАБОТКА ССЫЛОК И ПОИСКА ---
 
-@dp.message(F.text.regexp(r'^https?://[^\s]+'))
+@dp.message(F.text.startswith("http://") | F.text.startswith("https://"))
 async def handle_link(message: types.Message):
     if not await ensure_approved_access(message):
         return
