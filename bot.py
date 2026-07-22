@@ -616,7 +616,16 @@ async def cb_download(callback: types.CallbackQuery):
             input_file = types.FSInputFile(file_path)
             ext = os.path.splitext(file_path)[1].lower()
             if ext in ['.mp4', '.mkv', '.mov', '.avi']:
-                await bot.send_video(chat_id=user_id, video=input_file, caption=caption, parse_mode="Markdown")
+                w, h = downloader.get_video_dimensions(file_path)
+                await bot.send_video(
+                    chat_id=user_id,
+                    video=input_file,
+                    caption=caption,
+                    width=w,
+                    height=h,
+                    supports_streaming=True,
+                    parse_mode="Markdown"
+                )
             elif ext == '.mp3':
                 await bot.send_audio(chat_id=user_id, audio=input_file, caption=caption, parse_mode="Markdown")
             else:
