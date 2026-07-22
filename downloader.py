@@ -85,6 +85,54 @@ def get_video_dimensions(file_path: str) -> tuple:
         pass
     return None, None
 
+def ensure_h264_for_ios(file_path: str) -> str:
+    """Конвертирует AV1/VP9 (которые заставляют iPhone показывать статичный кадр) в H.264"""
+    if not os.path.exists(file_path):
+        return file_path
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in ['.mp4', '.mkv', '.mov', '.avi']:
+        return file_path
+        
+    try:
+        cmd_probe = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            file_path
+        ]
+        res_probe = subprocess.run(cmd_probe, capture_output=True, text=True)
+        codec = res_probe.stdout.strip().lower()
+        logger.info(f"Обнаружен видеокодек: '{codec}' для файла {file_path}")
+        
+        # Если кодек уже h264, отдаем сразу
+        if codec == 'h264':
+            return file_path
+            
+        # Кодеки AV1 (av01) и VP9 не поддерживаются плеером Telegram на iOS!
+        logger.info(f"Кодек '{codec}' заставляет iPhone зависать. Быстро конвертирую в H.264...")
+        out_path = os.path.splitext(file_path)[0] + "_h264.mp4"
+        cmd = [
+            'ffmpeg', '-y', '-i', file_path,
+            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
+            '-movflags', '+faststart',
+            '-preset', 'ultrafast',
+            '-c:a', 'copy',
+            out_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+            return out_path
+    except Exception as e:
+        logger.error(f"Ошибка проверки или конвертации в H.264: {e}")
+        
+    return file_path
+
 def compress_video_for_bot_api(input_path: str) -> str:
     """Сжимает видео от 48 МБ до 100 МБ до 47 МБ для мгновенной отправки через Bot API"""
     if not os.path.exists(input_path):
@@ -164,7 +212,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             height = 480
             
         ydl_opts = {
-            'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best',
+            'format': f'bestvideo[height<={height}][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
             'merge_output_format': 'mp4',
             'outtmpl': out_template,
             'progress_hooks': [ytdlp_progress_hook],
@@ -193,6 +241,8 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             if not final_path or not os.path.exists(final_path):
                 raise FileNotFoundError("Скачанный файл не был найден на диске.")
                 
+            # Проверяем кодек H.264 для 100% воспроизведения на iPhone
+            final_path = ensure_h264_for_ios(final_path)
             final_path = compress_video_for_bot_api(final_path)
             return final_path
             
