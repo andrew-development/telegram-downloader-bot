@@ -85,8 +85,34 @@ def get_video_dimensions(file_path: str) -> tuple:
         pass
     return None, None
 
+def ensure_ios_compatibility(input_path: str) -> str:
+    """Обеспечивает 100% плавное воспроизведение видео на iPhone (faststart + yuv420p)"""
+    if not os.path.exists(input_path):
+        return input_path
+    ext = os.path.splitext(input_path)[1].lower()
+    if ext not in ['.mp4', '.mkv', '.mov', '.avi']:
+        return input_path
+        
+    out_path = os.path.splitext(input_path)[0] + "_ios.mp4"
+    cmd = [
+        'ffmpeg', '-y', '-i', input_path,
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
+        '-movflags', '+faststart',
+        '-preset', 'ultrafast',
+        '-c:a', 'aac', '-b:a', '128k',
+        out_path
+    ]
+    res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+        try:
+            os.remove(input_path)
+        except Exception:
+            pass
+        return out_path
+    return input_path
+
 def compress_video_for_bot_api(input_path: str) -> str:
-    """Сжимает видео до 47 МБ, сохраняя точный пропорциональный размер картинки"""
+    """Сжимает видео до 47 МБ для мгновенной отправки, с поддержкой iOS faststart"""
     if not os.path.exists(input_path):
         return input_path
     size = os.path.getsize(input_path)
@@ -98,7 +124,9 @@ def compress_video_for_bot_api(input_path: str) -> str:
             cmd = [
                 'ffmpeg', '-y', '-i', input_path,
                 '-fs', '47M',
-                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '26', '-preset', 'ultrafast',
+                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
+                '-movflags', '+faststart',
+                '-crf', '26', '-preset', 'ultrafast',
                 '-c:a', 'aac', '-b:a', '128k',
                 out_path
             ]
@@ -109,7 +137,8 @@ def compress_video_for_bot_api(input_path: str) -> str:
                 except Exception:
                     pass
                 return out_path
-    return input_path
+    # Для всех остальных MP4 файлов гарантируем совместимость с iOS
+    return ensure_ios_compatibility(input_path)
 
 def download_media(url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None, time_range: str = None) -> str:
     """Скачивает медиа по ссылке с отслеживанием прогресса и отмены"""
@@ -185,7 +214,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             if not final_path or not os.path.exists(final_path):
                 raise FileNotFoundError("Скачанный файл не был найден на диске.")
                 
-            # Оптимизация для мгновенной отправки видео от 48 до 100 МБ
+            # Оптимизация и принудительный faststart для iOS
             final_path = compress_video_for_bot_api(final_path)
             return final_path
             
