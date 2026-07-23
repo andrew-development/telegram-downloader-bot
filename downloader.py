@@ -57,7 +57,7 @@ def get_video_info(url: str) -> dict:
         'geo_bypass': True,
         'js_runtimes': {'node': {}},
         'extractor_args': {
-            'youtube': {'player_client': ['android_vr', 'tv', 'web_embedded']},
+            'youtube': {'player_client': ['android_vr']},
             'facebook': {'facebook_mobile': [False]}
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -90,7 +90,7 @@ def search_youtube(query: str, limit: int = 5) -> list:
         'nocheckcertificate': True,
         'geo_bypass': True,
         'extractor_args': {
-            'youtube': {'player_client': ['android_vr', 'tv', 'web_embedded']}
+            'youtube': {'player_client': ['android_vr']}
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     }
@@ -254,7 +254,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         'geo_bypass': True,
         'js_runtimes': {'node': {}},
         'extractor_args': {
-            'youtube': {'player_client': ['android_vr', 'tv', 'web_embedded']},
+            'youtube': {'player_client': ['android_vr']},
             'facebook': {'facebook_mobile': [False]}
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
