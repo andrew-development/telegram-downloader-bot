@@ -50,7 +50,7 @@ def fetch_fast_tiktok(url: str) -> dict | None:
             play_url = d.get('play')
             title = d.get('title') or 'TikTok Video'
             if play_url:
-                logger.info(f"⚡ Успешное получение TikTok через TikWM API")
+                logger.info("⚡ Успешное получение TikTok через TikWM API")
                 return {'url': play_url, 'title': title, 'direct': True}
     except Exception as e:
         logger.warning(f"⚠️ TikWM API недоступен: {e}")
@@ -64,10 +64,44 @@ def fetch_fast_twitter(url: str) -> dict | None:
             title_m = re.search(r'<p class="text-gray-600[^"]*">([^<]+)</p>', r.text)
             title = title_m.group(1).strip() if title_m else 'Twitter Video'
             if urls:
-                logger.info(f"⚡ Успешное получение Twitter через TwitSave API")
+                logger.info("⚡ Успешное получение Twitter через TwitSave API")
                 return {'url': urls[0], 'title': title, 'direct': True}
     except Exception as e:
         logger.warning(f"⚠️ TwitSave API недоступен: {e}")
+    return None
+
+def fetch_loader_to_url(video_url: str, quality: str = '1080p') -> str | None:
+    """Обход блокировок YouTube через автономный движок Loader.to"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
+    
+    target_formats = ['1080', '720', '480', '360']
+    if quality == '720p':
+        target_formats = ['720', '1080', '480', '360']
+    elif quality == '480p':
+        target_formats = ['480', '720', '360']
+    elif quality == 'mp3':
+        target_formats = ['mp3']
+
+    for fmt in target_formats:
+        try:
+            logger.info(f"🚀 Попытка выгрузки YouTube через Loader.to (формат {fmt})...")
+            r1 = requests.get(f'https://loader.to/ajax/download.php?format={fmt}&url={video_url}', headers=headers, timeout=5)
+            if r1.status_code == 200:
+                d1 = r1.json()
+                progress_url = d1.get('progress_url')
+                if progress_url:
+                    for _ in range(12):
+                        time.sleep(1)
+                        r2 = requests.get(progress_url, headers=headers, timeout=5)
+                        if r2.status_code == 200:
+                            d2 = r2.json()
+                            d_url = d2.get('download_url')
+                            if d_url:
+                                logger.info(f"✅ Успешно получен прямой поток Loader.to ({fmt})!")
+                                return d_url
+        except Exception as e:
+            logger.warning(f"⚠️ Loader.to ({fmt}) не ответил: {e}")
+            continue
     return None
 
 def get_video_info(url: str) -> dict:
@@ -86,13 +120,12 @@ def get_video_info(url: str) -> dict:
         if fast_tw:
             return {'title': fast_tw['title'], 'duration': 0, 'thumbnail': None, 'formats': [], 'direct_info': fast_tw}
 
-    # 3. Для YouTube или других платформ используем yt_dlp со списком перебора клиентов
+    # 3. Безопасные клиенты YouTube (android_creator, tv_embedded, android_embedded)
     client_combos = [
-        ['android'],
-        ['ios'],
-        ['tv'],
-        ['android_vr'],
-        ['mweb']
+        ['android_creator'],
+        ['tv_embedded'],
+        ['android_embedded'],
+        ['android_vr']
     ]
     
     last_exc = None
@@ -147,7 +180,7 @@ def search_youtube(query: str, limit: int = 5) -> list:
         'nocheckcertificate': True,
         'geo_bypass': True,
         'extractor_args': {
-            'youtube': {'player_client': ['android', 'ios']}
+            'youtube': {'player_client': ['android_creator', 'tv_embedded']}
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
@@ -333,7 +366,16 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             out_path = compress_video_for_bot_api(out_path)
             return out_path
 
-    # 3. Скачивание через yt_dlp со списком комбинированных профилей
+    # 3. Автономная выгрузка YouTube через Loader.to (Полный обход IP блокировок YouTube)
+    if 'youtube.com' in clean_url or 'youtu.be' in clean_url:
+        loader_stream = fetch_loader_to_url(clean_url, quality)
+        if loader_stream:
+            download_direct_url(loader_stream, out_path, progress_callback, cancel_check_callback)
+            out_path = ensure_h264_for_ios(out_path)
+            out_path = compress_video_for_bot_api(out_path)
+            return out_path
+
+    # 4. Резервное скачивание через yt_dlp с незаблокированными клиентами (android_creator, tv_embedded)
     def ytdlp_progress_hook(d):
         try:
             if cancel_check_callback and cancel_check_callback():
@@ -365,11 +407,10 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         height = 480
 
     client_combos = [
-        ['android'],
-        ['ios'],
-        ['tv'],
-        ['android_vr'],
-        ['mweb']
+        ['android_creator'],
+        ['tv_embedded'],
+        ['android_embedded'],
+        ['android_vr']
     ]
 
     last_error = None
