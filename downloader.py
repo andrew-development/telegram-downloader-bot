@@ -47,6 +47,7 @@ def get_video_info(url: str) -> dict:
         'nocheckcertificate': True,
         'geo_bypass': True,
         'extractor_args': {
+            'youtube': {'player_client': ['android', 'ios', 'mweb']},
             'facebook': {'facebook_mobile': [False]}
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -76,7 +77,12 @@ def search_youtube(query: str, limit: int = 5) -> list:
         'no_warnings': True,
         'extract_flat': 'in_playlist',
         'default_search': 'ytsearch',
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'extractor_args': {
+            'youtube': {'player_client': ['android', 'ios', 'mweb']}
+        },
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     }
     with yt_dlp.YoutubeDL(f"ytsearch{limit}:{query}", ydl_opts) as ydl:
         info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
@@ -237,6 +243,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         'nocheckcertificate': True,
         'geo_bypass': True,
         'extractor_args': {
+            'youtube': {'player_client': ['android', 'ios', 'mweb']},
             'facebook': {'facebook_mobile': [False]}
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
