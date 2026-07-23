@@ -5,6 +5,7 @@ import logging
 import asyncio
 import uuid
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.context import FSMContext
@@ -16,7 +17,8 @@ import helper
 
 logger = logging.getLogger(__name__)
 
-bot = Bot(token=config.BOT_TOKEN)
+session = AiohttpSession(timeout=300)
+bot = Bot(token=config.BOT_TOKEN, session=session)
 dp = Dispatcher()
 
 class BotStates(StatesGroup):
