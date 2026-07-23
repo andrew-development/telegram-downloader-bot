@@ -47,6 +47,14 @@ def init_db():
             downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_downloads (
+            req_id TEXT PRIMARY KEY,
+            url TEXT,
+            title TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     
     # Автоматически одобряем администраторов из config.ADMIN_IDS
     for admin_id in config.ADMIN_IDS:
@@ -58,6 +66,23 @@ def init_db():
         
     conn.commit()
     conn.close()
+
+def save_pending_download(req_id: str, url: str, title: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO pending_downloads (req_id, url, title) VALUES (?, ?, ?)", (req_id, url, title))
+    conn.commit()
+    conn.close()
+
+def get_pending_download(req_id: str) -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT url, title FROM pending_downloads WHERE req_id = ?", (req_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {'url': row[0], 'title': row[1]}
+    return None
 
 def add_user(user_id: int, username: str, first_name: str) -> bool:
     is_admin = user_id in config.ADMIN_IDS

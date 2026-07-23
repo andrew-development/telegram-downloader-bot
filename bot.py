@@ -425,7 +425,16 @@ async def cb_local_mp3(callback: types.CallbackQuery):
                 except Exception:
                     pass
 
-import html
+def format_caption(title: str, prefix: str = "✅", suffix: str = "") -> str:
+    """Форматирует безопасный caption для Telegram (гарантированно <= 1000 символов)"""
+    safe_t = html.escape(title)
+    overhead = len(prefix) + len(suffix) + 30
+    max_len = 980 - overhead
+    if len(safe_t) > max_len:
+        safe_t = safe_t[:max_len - 3] + "..."
+    if suffix:
+        return f"{prefix} <b>{safe_t}</b> [{suffix}]"
+    return f"{prefix} <b>{safe_t}</b>"
 
 # --- ОБРАБОТКА ССЫЛОК И ПОИСКА ---
 
@@ -451,13 +460,13 @@ async def handle_link(message: types.Message):
     try:
         info = await asyncio.to_thread(downloader.get_video_info, url)
         raw_title = info.get('title', 'Без названия')
-        safe_title = html.escape(raw_title)
         
         req_id = f"dl_{os.urandom(6).hex()}"
         pending_downloads[req_id] = {
             'url': url,
             'title': raw_title
         }
+        database.save_pending_download(req_id, url, raw_title)
         
         builder = InlineKeyboardBuilder()
         builder.button(text="🎬 1080p (Высокое)", callback_data=f"q:{req_id}:1080p")
@@ -468,7 +477,7 @@ async def handle_link(message: types.Message):
         builder.button(text="🖼 Обложка (4K)", callback_data=f"thumb:{req_id}")
         builder.adjust(2, 2, 2)
         
-        caption = f"🎥 <b>{safe_title}</b>\n\nВыберите качество или действие:"
+        caption = format_caption(raw_title, prefix="🎥", suffix="Выберите качество или действие:")
         await message.answer(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
         
         try:
@@ -509,6 +518,7 @@ async def handle_search_query(message: types.Message):
             'url': item['url'],
             'title': item['title']
         }
+        database.save_pending_download(req_id, item['url'], item['title'])
         text += f"{idx}. **{item['title']}**\n"
         builder.button(text=f"🎬 Скачать #{idx}", callback_data=f"q:{req_id}:1080p")
         
@@ -521,12 +531,13 @@ async def cb_download_thumb(callback: types.CallbackQuery):
     if not await ensure_approved_access(callback):
         return
     _, req_id = callback.data.split(":")
-    if req_id not in pending_downloads:
+    req = pending_downloads.get(req_id) or database.get_pending_download(req_id)
+    if not req:
         await callback.message.edit_text("❌ Ссылка устарела.")
         await callback.answer()
         return
         
-    url = pending_downloads[req_id]['url']
+    url = req['url']
     await callback.message.edit_text("🖼 Скачиваю обложку высокого разрешения...")
     
     try:
@@ -542,7 +553,8 @@ async def cb_download_thumb(callback: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("trim_init:"))
 async def cb_trim_init(callback: types.CallbackQuery, state: FSMContext):
     _, req_id = callback.data.split(":")
-    if req_id not in pending_downloads:
+    req = pending_downloads.get(req_id) or database.get_pending_download(req_id)
+    if not req:
         await callback.message.edit_text("❌ Ссылка устарела.")
         await callback.answer()
         return
@@ -562,25 +574,25 @@ async def process_trim_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
     req_id = data.get('trim_req_id')
     
-    if req_id not in pending_downloads:
+    req = pending_downloads.get(req_id) or database.get_pending_download(req_id)
+    if not req:
         await message.answer("❌ Ссылка устарела.")
         await state.clear()
         return
         
-    req = pending_downloads[req_id]
     url = req['url']
     title = req['title']
     
-    status_msg = await message.answer(f"⏳ Скачиваю и вырезаю фрагмент `{time_range}` из **{title}**...")
+    status_msg = await message.answer(f"⏳ Скачиваю и вырезаю фрагмент `{time_range}` из **{title[:50]}**...")
     await state.clear()
     
     try:
         file_path = await asyncio.to_thread(downloader.download_media, url, '1080p', None, None, time_range)
         file_size_mb = round(os.path.getsize(file_path) / (1024 * 1024), 2)
-        caption = f"✂️ **{title}** [{time_range}]"
+        caption = format_caption(title, prefix="✂️", suffix=time_range)
         
         if os.path.getsize(file_path) <= 50 * 1024 * 1024:
-            await bot.send_video(chat_id=message.from_user.id, video=types.FSInputFile(file_path), caption=caption, parse_mode="Markdown")
+            await bot.send_video(chat_id=message.from_user.id, video=types.FSInputFile(file_path), caption=caption, parse_mode="HTML")
         else:
             await helper.send_large_file(chat_id=message.from_user.id, file_path=file_path, caption=caption)
             
@@ -613,12 +625,12 @@ async def cb_download(callback: types.CallbackQuery):
         return
         
     _, req_id, quality = callback.data.split(":")
-    if req_id not in pending_downloads:
+    req = pending_downloads.get(req_id) or database.get_pending_download(req_id)
+    if not req:
         await callback.message.edit_text("❌ Ссылка устарела. Отправьте ее заново.")
         await callback.answer()
         return
         
-    req = pending_downloads[req_id]
     url = req['url']
     title = req['title']
     safe_title = html.escape(title)
@@ -628,7 +640,7 @@ async def cb_download(callback: types.CallbackQuery):
     cancel_builder.button(text="❌ Отменить", callback_data=f"cancel:{req_id}")
     
     await callback.message.edit_text(
-        f"⏳ Скачиваю <b>{safe_title}</b> [{quality}]...\nПрогресс: 0%",
+        f"⏳ Скачиваю <b>{safe_title[:50]}</b> [{quality}]...\nПрогресс: 0%",
         reply_markup=cancel_builder.as_markup(),
         parse_mode="HTML"
     )
@@ -678,7 +690,7 @@ async def cb_download(callback: types.CallbackQuery):
         file_size_mb = round(file_size / (1024 * 1024), 2)
         
         await callback.message.edit_text(f"📤 Загружаю файл в Telegram ({file_size_mb} МБ)...")
-        caption = f"✅ <b>{safe_title}</b> [{quality}]"
+        caption = format_caption(title, prefix="✅", suffix=quality)
         
         if file_size <= 49 * 1024 * 1024:
             input_file = types.FSInputFile(file_path)
@@ -700,7 +712,7 @@ async def cb_download(callback: types.CallbackQuery):
             else:
                 await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="HTML")
         else:
-            caption_helper = f"✅ **{title}** [{quality}] (Отправлено через помощника)"
+            caption_helper = format_caption(title, prefix="✅", suffix=f"{quality} (Помощник)")
             success = await helper.send_large_file(chat_id=user_id, file_path=file_path, caption=caption_helper)
             if not success:
                 raise Exception("Не удалось отправить файл через юзербота.")
