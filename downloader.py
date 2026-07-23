@@ -14,25 +14,34 @@ class DownloadCancelledError(Exception):
 import requests
 
 def resolve_redirect_url(url: str) -> str:
-    """Раскрывает короткие ссылки-редиректы (Facebook share/r, bit.ly, etc.) в прямые ссылки"""
-    if 'facebook.com/share/r/' in url or 'fb.watch' in url or 'vt.tiktok.com' in url or 'youtu.be' in url:
+    """Раскрывает сокращенные ссылки (facebook.com/share/r/, youtu.be, youtube.com/shorts)"""
+    if 'youtube.com/shorts/' in url:
+        import re
+        match = re.search(r'shorts/([a-zA-Z0-9_-]+)', url)
+        if match:
+            video_id = match.group(1)
+            clean_yt = f"https://www.youtube.com/watch?v={video_id}"
+            logger.info(f"🔄 Преобразована ссылка Shorts: {url} -> {clean_yt}")
+            return clean_yt
+    elif 'youtu.be/' in url:
+        import re
+        match = re.search(r'youtu\.be/([a-zA-Z0-9_-]+)', url)
+        if match:
+            video_id = match.group(1)
+            clean_yt = f"https://www.youtube.com/watch?v={video_id}"
+            logger.info(f"🔄 Преобразована ссылка youtu.be: {url} -> {clean_yt}")
+            return clean_yt
+    elif 'facebook.com/share/' in url or 'fb.watch/' in url:
         try:
-            resp = requests.head(url, allow_redirects=True, timeout=5, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            })
-            if resp.url and resp.url != url:
-                logger.info(f"🔗 Ссылка {url} раскрыта в: {resp.url}")
-                return resp.url
-        except Exception:
-            try:
-                resp = requests.get(url, allow_redirects=True, timeout=5, headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                })
-                if resp.url and resp.url != url:
-                    logger.info(f"🔗 Ссылка {url} раскрыта через GET в: {resp.url}")
-                    return resp.url
-            except Exception as e:
-                logger.warning(f"⚠️ Ошибка раскрытия редиректа ссылки {url}: {e}")
+            import requests
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            resp = requests.head(url, allow_redirects=True, timeout=5, headers=headers)
+            final_url = resp.url
+            if final_url and final_url != url:
+                logger.info(f"🔄 Раскрыт редирект Facebook: {url} -> {final_url}")
+                return final_url
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка раскрытия редиректа ссылки {url}: {e}")
     return url
 
 def get_video_info(url: str) -> dict:
