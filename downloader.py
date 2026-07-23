@@ -11,23 +11,48 @@ logger = logging.getLogger(__name__)
 class DownloadCancelledError(Exception):
     pass
 
+import requests
+
+def resolve_redirect_url(url: str) -> str:
+    """Раскрывает короткие ссылки-редиректы (Facebook share/r, bit.ly, etc.) в прямые ссылки"""
+    if 'facebook.com/share/r/' in url or 'fb.watch' in url or 'vt.tiktok.com' in url or 'youtu.be' in url:
+        try:
+            resp = requests.head(url, allow_redirects=True, timeout=5, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            })
+            if resp.url and resp.url != url:
+                logger.info(f"🔗 Ссылка {url} раскрыта в: {resp.url}")
+                return resp.url
+        except Exception:
+            try:
+                resp = requests.get(url, allow_redirects=True, timeout=5, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                })
+                if resp.url and resp.url != url:
+                    logger.info(f"🔗 Ссылка {url} раскрыта через GET в: {resp.url}")
+                    return resp.url
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка раскрытия редиректа ссылки {url}: {e}")
+    return url
+
 def get_video_info(url: str) -> dict:
-    """Получает информацию о видео (название, доступные форматы) с быстрым таймаутом"""
+    """Получает информацию о видео с автоматическим раскрытием редиректов и гарантийным fallback"""
+    clean_url = resolve_redirect_url(url)
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'socket_timeout': 10,
-        'retries': 2,
-        'fragment_retries': 2,
+        'socket_timeout': 15,
+        'retries': 3,
+        'fragment_retries': 3,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
     last_exc = None
     for attempt in range(2):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = ydl.extract_info(clean_url, download=False)
                 return {
-                    'title': info.get('title', 'Без названия'),
+                    'title': info.get('title', 'Видео по ссылке'),
                     'duration': info.get('duration', 0),
                     'thumbnail': info.get('thumbnail', None),
                     'formats': info.get('formats', [])
@@ -35,7 +60,14 @@ def get_video_info(url: str) -> dict:
         except Exception as e:
             last_exc = e
             time.sleep(0.5)
-    raise last_exc
+            
+    logger.warning(f"⚠️ Не удалось вытащить метаданные {url}: {last_exc}. Использование неубиваемого fallback.")
+    return {
+        'title': 'Видео по вашей ссылке',
+        'duration': 0,
+        'thumbnail': None,
+        'formats': []
+    }
 
 def search_youtube(query: str, limit: int = 5) -> list:
     """Ищет видео на YouTube по ключевым словам"""
@@ -174,6 +206,7 @@ def compress_video_for_bot_api(input_path: str) -> str:
 
 def download_media(url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None, time_range: str = None) -> str:
     """Скачивает медиа по ссылке с отслеживанием прогресса и отмены"""
+    url = resolve_redirect_url(url)
     file_id = str(uuid.uuid4().hex)
     
     def ytdlp_progress_hook(d):
