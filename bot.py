@@ -621,15 +621,16 @@ async def cb_download(callback: types.CallbackQuery):
     req = pending_downloads[req_id]
     url = req['url']
     title = req['title']
+    safe_title = html.escape(title)
     
     active_downloads[req_id] = {'cancelled': False}
     cancel_builder = InlineKeyboardBuilder()
     cancel_builder.button(text="❌ Отменить", callback_data=f"cancel:{req_id}")
     
     await callback.message.edit_text(
-        f"⏳ Скачиваю **{title}** [{quality}]...\nПрогресс: 0%",
+        f"⏳ Скачиваю <b>{safe_title}</b> [{quality}]...\nПрогресс: 0%",
         reply_markup=cancel_builder.as_markup(),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await callback.answer()
     
@@ -645,16 +646,16 @@ async def cb_download(callback: types.CallbackQuery):
             speed = p['speed_mb']
             
             progress_text = (
-                f"⏳ Скачиваю **{title[:40]}** [{quality}]\n\n"
-                f"📊 Прогресс: **{percent:.1f}%**\n"
-                f"📦 Загружено: **{d_mb} МБ** / **{t_mb} МБ**\n"
-                f"⚡ Скорость: **{speed} МБ/с**"
+                f"⏳ Скачиваю <b>{safe_title[:40]}</b> [{quality}]\n\n"
+                f"📊 Прогресс: <b>{percent:.1f}%</b>\n"
+                f"📦 Загружено: <b>{d_mb} МБ</b> / <b>{t_mb} МБ</b>\n"
+                f"⚡ Скорость: <b>{speed} МБ/с</b>"
             )
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     asyncio.run_coroutine_threadsafe(
-                        callback.message.edit_text(progress_text, reply_markup=cancel_builder.as_markup(), parse_mode="Markdown"),
+                        callback.message.edit_text(progress_text, reply_markup=cancel_builder.as_markup(), parse_mode="HTML"),
                         loop
                     )
             except Exception:
@@ -677,7 +678,7 @@ async def cb_download(callback: types.CallbackQuery):
         file_size_mb = round(file_size / (1024 * 1024), 2)
         
         await callback.message.edit_text(f"📤 Загружаю файл в Telegram ({file_size_mb} МБ)...")
-        caption = f"✅ **{title}** [{quality}]"
+        caption = f"✅ <b>{safe_title}</b> [{quality}]"
         
         if file_size <= 49 * 1024 * 1024:
             input_file = types.FSInputFile(file_path)
@@ -692,12 +693,12 @@ async def cb_download(callback: types.CallbackQuery):
                     width=w,
                     height=h,
                     supports_streaming=True,
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
             elif ext == '.mp3':
-                await bot.send_audio(chat_id=user_id, audio=input_file, caption=caption, parse_mode="Markdown")
+                await bot.send_audio(chat_id=user_id, audio=input_file, caption=caption, parse_mode="HTML")
             else:
-                await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="Markdown")
+                await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="HTML")
         else:
             caption_helper = f"✅ **{title}** [{quality}] (Отправлено через помощника)"
             success = await helper.send_large_file(chat_id=user_id, file_path=file_path, caption=caption_helper)

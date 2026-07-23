@@ -222,7 +222,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             height = 480
             
         ydl_opts = {
-            'format': f'bestvideo[height<={height}][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
+            'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
             'merge_output_format': 'mp4',
             'outtmpl': out_template,
             'progress_hooks': [ytdlp_progress_hook],
