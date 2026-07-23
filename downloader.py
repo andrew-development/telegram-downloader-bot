@@ -46,6 +46,7 @@ def get_video_info(url: str) -> dict:
         'fragment_retries': 3,
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'js_runtimes': {'node': {}},
         'extractor_args': {
             'youtube': {'player_client': ['android', 'ios', 'mweb']},
             'facebook': {'facebook_mobile': [False]}
@@ -242,6 +243,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
     common_opts = {
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'js_runtimes': {'node': {}},
         'extractor_args': {
             'youtube': {'player_client': ['android', 'ios', 'mweb']},
             'facebook': {'facebook_mobile': [False]}
