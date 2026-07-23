@@ -425,6 +425,8 @@ async def cb_local_mp3(callback: types.CallbackQuery):
                 except Exception:
                     pass
 
+import html
+
 # --- ОБРАБОТКА ССЫЛОК И ПОИСКА ---
 
 @dp.message(F.text.startswith(("http://", "https://")))
@@ -448,11 +450,13 @@ async def handle_link(message: types.Message):
     
     try:
         info = await asyncio.to_thread(downloader.get_video_info, url)
+        raw_title = info.get('title', 'Без названия')
+        safe_title = html.escape(raw_title)
         
         req_id = f"dl_{os.urandom(6).hex()}"
         pending_downloads[req_id] = {
             'url': url,
-            'title': info['title']
+            'title': raw_title
         }
         
         builder = InlineKeyboardBuilder()
@@ -464,13 +468,20 @@ async def handle_link(message: types.Message):
         builder.button(text="🖼 Обложка (4K)", callback_data=f"thumb:{req_id}")
         builder.adjust(2, 2, 2)
         
-        caption = f"🎥 **{info['title']}**\n\nВыберите качество или действие:"
-        await status_msg.delete()
-        await message.answer(caption, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        caption = f"🎥 <b>{safe_title}</b>\n\nВыберите качество или действие:"
+        await message.answer(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
+        
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
         
     except Exception as e:
         logger.error(f"Ошибка разбора ссылки: {e}")
-        await status_msg.edit_text("❌ Не удалось получить информацию о видео. Проверьте ссылку.")
+        try:
+            await status_msg.edit_text(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
+        except Exception:
+            await message.answer(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
 
 @dp.message(F.text & ~F.text.startswith("/"))
 async def handle_search_query(message: types.Message):
