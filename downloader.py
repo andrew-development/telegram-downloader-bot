@@ -44,30 +44,30 @@ def get_video_info(url: str) -> dict:
         'socket_timeout': 15,
         'retries': 3,
         'fragment_retries': 3,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'extractor_args': {
+            'facebook': {'facebook_mobile': [False]}
+        },
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     }
-    last_exc = None
-    for attempt in range(2):
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(clean_url, download=False)
-                return {
-                    'title': info.get('title', 'Видео по ссылке'),
-                    'duration': info.get('duration', 0),
-                    'thumbnail': info.get('thumbnail', None),
-                    'formats': info.get('formats', [])
-                }
-        except Exception as e:
-            last_exc = e
-            time.sleep(0.5)
-            
-    logger.warning(f"⚠️ Не удалось вытащить метаданные {url}: {last_exc}. Использование неубиваемого fallback.")
-    return {
-        'title': 'Видео по вашей ссылке',
-        'duration': 0,
-        'thumbnail': None,
-        'formats': []
-    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(clean_url, download=False)
+            return {
+                'title': info.get('title', 'Видео по вашей ссылке'),
+                'duration': info.get('duration', 0),
+                'thumbnail': info.get('thumbnail', None),
+                'formats': info.get('formats', [])
+            }
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось вытащить метаданные {url}: {e}. Использование безопасного fallback.")
+        return {
+            'title': 'Видео по вашей ссылке',
+            'duration': 0,
+            'thumbnail': None,
+            'formats': []
+        }
 
 def search_youtube(query: str, limit: int = 5) -> list:
     """Ищет видео на YouTube по ключевым словам"""
@@ -233,8 +233,18 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
 
     out_template = os.path.join(DOWNLOAD_TEMP_DIR, f"{file_id}.%(ext)s")
     
+    common_opts = {
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'extractor_args': {
+            'facebook': {'facebook_mobile': [False]}
+        },
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    }
+
     if quality == 'mp3':
         ydl_opts = {
+            **common_opts,
             'format': 'bestaudio/best',
             'outtmpl': out_template,
             'postprocessors': [{
@@ -245,7 +255,6 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             'progress_hooks': [ytdlp_progress_hook],
             'quiet': True,
             'no_warnings': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
     else:
         height = 1080
@@ -255,13 +264,13 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             height = 480
             
         ydl_opts = {
+            **common_opts,
             'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
             'merge_output_format': 'mp4',
             'outtmpl': out_template,
             'progress_hooks': [ytdlp_progress_hook],
             'quiet': True,
             'no_warnings': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
         
     if time_range:
