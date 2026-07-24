@@ -35,28 +35,23 @@ active_downloads = {}   # req_id -> {'cancelled': False}
 uploaded_files = {}     # file_req_id -> {'file_id', 'file_name', 'media_type'}
 active_searches = {}    # search_id -> {'results', 'index', 'query', ...}
 
-def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
-    """Создает постоянную нижнюю клавиатуру над полем ввода сообщения"""
-    builder = ReplyKeyboardBuilder()
-    builder.button(text="🔍 Поиск контента")
-    builder.button(text="🎵 Поиск музыки (MP3)")
-    builder.button(text="🎬 Видеоклипы")
-    builder.button(text="📊 Статус")
-    if user_id in config.ADMIN_IDS:
-        builder.button(text="⚙️ Админ")
-    builder.adjust(2, 2)
-    return builder.as_markup(resize_keyboard=True, persistent=True)
+def remove_reply_keyboard() -> types.ReplyKeyboardRemove:
+    """Удаляет громоздкую нижнюю клавиатуру, оставляя красивое чистое меню Menu"""
+    return types.ReplyKeyboardRemove()
 
 async def setup_bot_commands():
-    """Устанавливает официальное меню команд Telegram (кнопка '/' слева от строки ввода)"""
+    """Устанавливает официальное меню команд Telegram (синяя кнопка 'Menu' / '/' слева от строки ввода)"""
     commands = [
         types.BotCommand(command="start", description="🚀 Перезапуск и главное меню"),
+        types.BotCommand(command="search", description="🔍 Поиск контента (Видео / Фото)"),
+        types.BotCommand(command="music", description="🎵 Поиск музыки (MP3)"),
+        types.BotCommand(command="clips", description="🎬 Поиск видеоклипов"),
         types.BotCommand(command="stats", description="📊 Ваша статистика скачиваний"),
         types.BotCommand(command="admin", description="⚙️ Панель администратора"),
     ]
     try:
         await bot.set_my_commands(commands)
-        logger.info("✅ Официальное меню команд Telegram успешно зарегистрировано!")
+        logger.info("✅ Официальное меню команд Telegram (6 пунктов) успешно зарегистрировано!")
     except Exception as e:
         logger.error(f" Ошибка установки команд бота: {e}")
 
@@ -176,13 +171,12 @@ async def cmd_start(message: types.Message):
     if user_id in config.ADMIN_IDS:
         welcome_text += f"⚙️ `/admin` — Панель администратора\n"
         
-    reply_kb = get_main_reply_keyboard(user_id)
     if not is_sub:
         welcome_text += "\n⚠️ Пожалуйста, подпишитесь на каналы ниже для доступа:"
         await message.answer(welcome_text, reply_markup=get_subscription_keyboard(channels))
     else:
-        welcome_text += "\n📥 Отправьте мне **ссылку**, **файл** или **текст для поиска**!"
-        await message.answer(welcome_text, reply_markup=reply_kb)
+        welcome_text += "\n📥 Отправьте мне **ссылку**, **файл** или выберите команду в меню **Menu** (слева внизу)!"
+        await message.answer(welcome_text, reply_markup=remove_reply_keyboard())
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -501,7 +495,7 @@ async def handle_link(message: types.Message):
         except Exception:
             await message.answer(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
 
-@dp.message(F.text == "🔍 Поиск контента")
+@dp.message(Command("search") | (F.text == "🔍 Поиск контента"))
 async def start_media_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
@@ -534,7 +528,7 @@ async def cb_select_mediatype(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text == "🎬 Видеоклипы")
+@dp.message(Command("clips") | (F.text == "🎬 Видеоклипы"))
 async def start_clip_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
@@ -565,7 +559,7 @@ async def process_clip_query(message: types.Message, state: FSMContext):
     await status_msg.delete()
     await send_search_card(message.chat.id, search_id)
 
-@dp.message(F.text == "🎵 Поиск музыки (MP3)")
+@dp.message(Command("music") | (F.text == "🎵 Поиск музыки (MP3)"))
 async def start_music_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
