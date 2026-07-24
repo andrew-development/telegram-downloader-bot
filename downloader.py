@@ -197,6 +197,32 @@ def format_duration_str(seconds) -> str:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
 
+def format_views_count(views) -> str:
+    """Форматирует число просмотров в понятный красивый формат (например: 2.1M, 450.5K)"""
+    if not views:
+        return "Неизвестно"
+    try:
+        v = int(views)
+        if v >= 1_000_000_000:
+            return f"{v / 1_000_000_000:.1f}B"
+        elif v >= 1_000_000:
+            return f"{v / 1_000_000:.1f}M"
+        elif v >= 1_000:
+            return f"{v / 1_000:.1f}K"
+        return f"{v:,}".replace(',', ' ')
+    except Exception:
+        return "Неизвестно"
+
+def format_upload_date(date_str) -> str:
+    """Форматирует дату YYYYMMDD в формат DD.MM.YYYY"""
+    if not date_str or len(str(date_str)) != 8:
+        return "Неизвестно"
+    try:
+        d = str(date_str)
+        return f"{d[6:8]}.{d[4:6]}.{d[:4]}"
+    except Exception:
+        return "Неизвестно"
+
 def search_music(query: str, limit: int = 50) -> list:
     """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора (до 50 результатов)"""
     query = query.strip()
@@ -221,11 +247,15 @@ def search_music(query: str, limit: int = 50) -> list:
                     title = entry.get('title', 'Без названия')
                     uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Неизвестный исполнитель'
                     dur_str = format_duration_str(entry.get('duration'))
+                    views_str = format_views_count(entry.get('view_count'))
+                    upload_date_str = format_upload_date(entry.get('upload_date'))
                     results.append({
                         'id': v_id,
                         'title': title,
                         'uploader': uploader,
                         'duration_str': dur_str,
+                        'views_str': views_str,
+                        'upload_date_str': upload_date_str,
                         'url': f"https://www.youtube.com/watch?v={v_id}",
                         'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })
@@ -258,11 +288,15 @@ def search_music_videos(query: str, limit: int = 50) -> list:
                     title = entry.get('title', 'Без названия')
                     uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Музыкальный канал'
                     dur_str = format_duration_str(entry.get('duration'))
+                    views_str = format_views_count(entry.get('view_count'))
+                    upload_date_str = format_upload_date(entry.get('upload_date'))
                     results.append({
                         'id': v_id,
                         'title': title,
                         'uploader': uploader,
                         'duration_str': dur_str,
+                        'views_str': views_str,
+                        'upload_date_str': upload_date_str,
                         'url': f"https://www.youtube.com/watch?v={v_id}",
                         'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })
@@ -298,11 +332,15 @@ def search_media(platform: str, query: str, media_type: str = 'video', limit: in
                     title = entry.get('title', 'Без названия')
                     uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Автор не указан'
                     dur_str = format_duration_str(entry.get('duration'))
+                    views_str = format_views_count(entry.get('view_count'))
+                    upload_date_str = format_upload_date(entry.get('upload_date'))
                     results.append({
                         'id': v_id,
                         'title': title,
                         'uploader': uploader,
                         'duration_str': dur_str,
+                        'views_str': views_str,
+                        'upload_date_str': upload_date_str,
                         'url': f"https://www.youtube.com/watch?v={v_id}",
                         'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })

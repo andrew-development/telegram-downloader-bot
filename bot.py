@@ -635,6 +635,7 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
     total = len(results)
     uploader = html.escape(item.get('uploader', 'Неизвестно'))
     duration = item.get('duration_str', 'Неизвестно')
+    views = item.get('views_str', 'Неизвестно')
     title_esc = html.escape(item['title'])
     
     if is_music:
@@ -643,6 +644,7 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
             f"📌 <b>Название</b>: {title_esc}\n"
             f"👤 <b>Исполнитель/Канал</b>: {uploader}\n"
             f"⏱ <b>Длительность</b>: {duration}\n"
+            f"👁 <b>Просмотры</b>: {views}\n"
         )
     elif is_clip:
         caption = (
@@ -650,6 +652,7 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
             f"📌 <b>Клип</b>: {title_esc}\n"
             f"👤 <b>Автор/Канал</b>: {uploader}\n"
             f"⏱ <b>Длительность</b>: {duration}\n"
+            f"👁 <b>Просмотры</b>: {views}\n"
         )
     else:
         media_icon = "🎬" if search_data.get('media_type') == 'video' else "🖼"
@@ -658,6 +661,7 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
             f"📌 <b>Название</b>: {title_esc}\n"
             f"👤 <b>Автор/Канал</b>: {uploader}\n"
             f"⏱ <b>Длительность</b>: {duration}\n"
+            f"👁 <b>Просмотры</b>: {views}\n"
             f"🌐 <b>Платформа</b>: {search_data.get('platform', 'YouTube')}\n"
         )
 
