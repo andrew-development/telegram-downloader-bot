@@ -185,8 +185,10 @@ def get_video_info(url: str) -> dict:
         'formats': []
     }
 
-def search_youtube(query: str, limit: int = 5) -> list:
-    """Ищет видео на YouTube по ключевым словам"""
+def search_music(query: str, limit: int = 5) -> list:
+    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3)"""
+    query = query.strip()
+    search_term = f"ytsearch{limit}:{query} audio"
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -194,26 +196,64 @@ def search_youtube(query: str, limit: int = 5) -> list:
         'default_search': 'ytsearch',
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'extractor_args': {
-            'youtube': {'player_client': ['android_creator', 'tv_embedded']}
-        },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
     try:
-        with yt_dlp.YoutubeDL(f"ytsearch{limit}:{query}", ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_term, download=False)
             results = []
             entries = info.get('entries', [])
             for entry in entries:
                 if entry:
+                    v_id = entry.get('id')
+                    title = entry.get('title', 'Без названия')
                     results.append({
-                        'title': entry.get('title', 'Без названия'),
-                        'url': f"https://www.youtube.com/watch?v={entry.get('id')}",
-                        'duration': entry.get('duration', 0)
+                        'id': v_id,
+                        'title': title,
+                        'url': f"https://www.youtube.com/watch?v={v_id}",
+                        'duration': entry.get('duration', 0),
+                        'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })
             return results
     except Exception as e:
-        logger.error(f"Ошибка поиска на YouTube: {e}")
+        logger.error(f"Ошибка поиска музыки: {e}")
+        return []
+
+def search_media(platform: str, query: str, media_type: str = 'video', limit: int = 5) -> list:
+    """Универсальный опечаткоустойчивый поиск медиаконтента (видео или фото)"""
+    query = query.strip()
+    search_term = f"ytsearch{limit}:{platform} {query}"
+    if media_type == 'photo':
+        search_term = f"ytsearch{limit}:{query} photo thumbnail"
+
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': 'in_playlist',
+        'default_search': 'ytsearch',
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_term, download=False)
+            results = []
+            entries = info.get('entries', [])
+            for entry in entries:
+                if entry:
+                    v_id = entry.get('id')
+                    title = entry.get('title', 'Без названия')
+                    results.append({
+                        'id': v_id,
+                        'title': title,
+                        'url': f"https://www.youtube.com/watch?v={v_id}",
+                        'duration': entry.get('duration', 0),
+                        'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+                    })
+            return results
+    except Exception as e:
+        logger.error(f"Ошибка поиска медиа ({platform}, {media_type}): {e}")
         return []
 
 def download_thumbnail(url: str) -> str:

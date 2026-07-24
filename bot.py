@@ -26,19 +26,23 @@ class BotStates(StatesGroup):
     waiting_for_local_trim_range = State()
     waiting_for_invite_code = State()
     waiting_for_broadcast_msg = State()
+    waiting_for_search_keywords = State()
+    waiting_for_music_keywords = State()
 
 pending_downloads = {}  # req_id -> {'url', 'title'}
 active_downloads = {}   # req_id -> {'cancelled': False}
 uploaded_files = {}     # file_req_id -> {'file_id', 'file_name', 'media_type'}
+active_searches = {}    # search_id -> {'results', 'index', 'query', ...}
 
 def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
     """Создает постоянную нижнюю клавиатуру над полем ввода сообщения"""
     builder = ReplyKeyboardBuilder()
-    builder.button(text="🚀 Старт")
+    builder.button(text="🔍 Поиск контента")
+    builder.button(text="🎵 Поиск музыки (MP3)")
     builder.button(text="📊 Статус")
     if user_id in config.ADMIN_IDS:
         builder.button(text="⚙️ Админ")
-    builder.adjust(3 if user_id in config.ADMIN_IDS else 2)
+    builder.adjust(2, 2 if user_id in config.ADMIN_IDS else 1)
     return builder.as_markup(resize_keyboard=True, persistent=True)
 
 async def setup_bot_commands():
@@ -495,39 +499,169 @@ async def handle_link(message: types.Message):
         except Exception:
             await message.answer(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
 
-@dp.message(F.text & ~F.text.startswith("/"))
-async def handle_search_query(message: types.Message):
+@dp.message(F.text == "🔍 Поиск контента")
+async def start_media_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
-        
-    query = message.text.strip()
-    status_msg = await message.answer(
-        f"🔍 Ищу на YouTube: **{query}**...",
-        reply_markup=get_main_reply_keyboard(message.from_user.id),
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔴 YouTube", callback_data="sp:YouTube")
+    builder.button(text="🎵 TikTok", callback_data="sp:TikTok")
+    builder.button(text="📸 Instagram", callback_data="sp:Instagram")
+    builder.button(text="🔵 Facebook", callback_data="sp:Facebook")
+    builder.adjust(2, 2)
+    await message.answer("🔍 **Выберите платформу для поиска:**", reply_markup=builder.as_markup(), parse_mode="Markdown")
+
+@dp.callback_query(F.data.startswith("sp:"))
+async def cb_select_platform(callback: types.CallbackQuery, state: FSMContext):
+    platform = callback.data.split(":")[1]
+    await state.update_data(search_platform=platform)
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🎬 Видео", callback_data="st:video")
+    builder.button(text="🖼 Фото / Обложка", callback_data="st:photo")
+    builder.adjust(2)
+    await callback.message.edit_text(f"📌 Платформа: **{platform}**\n\n**Выберите тип контента:**", reply_markup=builder.as_markup(), parse_mode="Markdown")
+
+@dp.callback_query(F.data.startswith("st:"))
+async def cb_select_mediatype(callback: types.CallbackQuery, state: FSMContext):
+    media_type = callback.data.split(":")[1]
+    await state.update_data(search_mediatype=media_type)
+    await state.set_state(BotStates.waiting_for_search_keywords)
+    type_name = "видео" if media_type == "video" else "фото/обложек"
+    await callback.message.edit_text(
+        f"🔍 **Поиск {type_name}**\n\nВведите тему или ключевые слова (например: `ремонт авто` или `смешные коты`):",
         parse_mode="Markdown"
     )
+
+@dp.message(F.text == "🎵 Поиск музыки (MP3)")
+async def start_music_search(message: types.Message, state: FSMContext):
+    if not await ensure_approved_access(message):
+        return
+    await state.set_state(BotStates.waiting_for_music_keywords)
+    await message.answer(
+        "🎧 **Поиск музыки (MP3)**\n\nВведите название песни или исполнителя (опечатки автоматически исправляются, например: `Queen Bohemian` или `Баста`):",
+        parse_mode="Markdown"
+    )
+
+@dp.message(BotStates.waiting_for_music_keywords)
+async def process_music_query(message: types.Message, state: FSMContext):
+    await state.clear()
+    query = message.text.strip()
+    status_msg = await message.answer(f"🔎 Ищу аудиотреки: **{query}**...", parse_mode="Markdown")
     
-    results = await asyncio.to_thread(downloader.search_youtube, query, 5)
+    results = await asyncio.to_thread(downloader.search_music, query, 5)
+    if not results:
+        await status_msg.edit_text("❌ Ничего не найдено по вашему запросу. Попробуйте уточнить название.")
+        return
+        
+    search_id = f"s_{os.urandom(6).hex()}"
+    active_searches[search_id] = {
+        'results': results,
+        'index': 0,
+        'query': query,
+        'is_music': True
+    }
+    await status_msg.delete()
+    await send_search_card(message.chat.id, search_id)
+
+@dp.message(BotStates.waiting_for_search_keywords)
+async def process_search_query(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    await state.clear()
+    platform = data.get('search_platform', 'YouTube')
+    media_type = data.get('search_mediatype', 'video')
+    query = message.text.strip()
+    
+    status_msg = await message.answer(f"🔎 Ищу на **{platform}**: `{query}`...", parse_mode="Markdown")
+    results = await asyncio.to_thread(downloader.search_media, platform, query, media_type, 5)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу.")
         return
-        
-    builder = InlineKeyboardBuilder()
-    text = f"🔎 **Результаты поиска по запросу:** `{query}`\n\n"
-    
-    for idx, item in enumerate(results, 1):
-        req_id = f"dl_{os.urandom(6).hex()}"
-        pending_downloads[req_id] = {
-            'url': item['url'],
-            'title': item['title']
-        }
-        database.save_pending_download(req_id, item['url'], item['title'])
-        text += f"{idx}. **{item['title']}**\n"
-        builder.button(text=f"🎬 Скачать #{idx}", callback_data=f"q:{req_id}:1080p")
-        
-    builder.adjust(2)
+
+    search_id = f"s_{os.urandom(6).hex()}"
+    active_searches[search_id] = {
+        'results': results,
+        'index': 0,
+        'query': query,
+        'platform': platform,
+        'media_type': media_type,
+        'is_music': False
+    }
     await status_msg.delete()
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await send_search_card(message.chat.id, search_id)
+
+async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.Message = None):
+    search_data = active_searches.get(search_id)
+    if not search_data:
+        return
+    results = search_data['results']
+    idx = search_data['index']
+    item = results[idx]
+    
+    is_music = search_data.get('is_music', False)
+    req_id = f"dl_{os.urandom(6).hex()}"
+    pending_downloads[req_id] = {
+        'url': item['url'],
+        'title': item['title']
+    }
+    database.save_pending_download(req_id, item['url'], item['title'])
+    
+    total = len(results)
+    
+    if is_music:
+        caption = f"🎵 **Найденный аудиотрек [{idx+1}/{total}]**\n\n📌 **Трек**: {html.escape(item['title'])}\n"
+    else:
+        media_icon = "🎬" if search_data.get('media_type') == 'video' else "🖼"
+        caption = f"{media_icon} **Результат поиска [{idx+1}/{total}]**\n\n📌 **Название**: {html.escape(item['title'])}\n🌐 **Платформа**: {search_data.get('platform')}\n"
+
+    builder = InlineKeyboardBuilder()
+    if is_music:
+        builder.button(text="🎵 Скачать MP3", callback_data=f"q:{req_id}:mp3")
+    else:
+        if search_data.get('media_type') == 'photo':
+            builder.button(text="🖼 Скачать обложку", callback_data=f"thumb:{req_id}")
+        else:
+            builder.button(text="🎬 Скачать 720p", callback_data=f"q:{req_id}:720p")
+            builder.button(text="🎬 Скачать 1080p", callback_data=f"q:{req_id}:1080p")
+            builder.button(text="🎵 Только Аудио (MP3)", callback_data=f"q:{req_id}:mp3")
+            
+    nav_buttons = []
+    if idx > 0:
+        nav_buttons.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"snav:{search_id}:prev"))
+    if idx < total - 1:
+        nav_buttons.append(types.InlineKeyboardButton(text="Вперед ➡️", callback_data=f"snav:{search_id}:next"))
+    if nav_buttons:
+        builder.row(*nav_buttons)
+    builder.row(types.InlineKeyboardButton(text="❌ Закрыть", callback_data=f"snav:{search_id}:close"))
+
+    if message_to_edit:
+        try:
+            await message_to_edit.edit_text(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
+            return
+        except Exception:
+            pass
+
+    await bot.send_message(chat_id, caption, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("snav:"))
+async def cb_search_nav(callback: types.CallbackQuery):
+    _, search_id, action = callback.data.split(":")
+    search_data = active_searches.get(search_id)
+    if not search_data:
+        await callback.answer("Поиск устарел.", show_alert=True)
+        return
+        
+    if action == "close":
+        active_searches.pop(search_id, None)
+        await callback.message.delete()
+        await callback.answer()
+        return
+    elif action == "prev":
+        search_data['index'] = max(0, search_data['index'] - 1)
+    elif action == "next":
+        search_data['index'] = min(len(search_data['results']) - 1, search_data['index'] + 1)
+        
+    await send_search_card(callback.message.chat.id, search_id, callback.message)
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("thumb:"))
 async def cb_download_thumb(callback: types.CallbackQuery):
