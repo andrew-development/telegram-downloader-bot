@@ -35,9 +35,17 @@ active_downloads = {}   # req_id -> {'cancelled': False}
 uploaded_files = {}     # file_req_id -> {'file_id', 'file_name', 'media_type'}
 active_searches = {}    # search_id -> {'results', 'index', 'query', ...}
 
-def remove_reply_keyboard() -> types.ReplyKeyboardRemove:
-    """Удаляет громоздкую нижнюю клавиатуру, оставляя красивое чистое меню Menu"""
-    return types.ReplyKeyboardRemove()
+def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
+    """Создает постоянную клавиатуру и гарантирует отображение синей кнопки Меню в Telegram"""
+    builder = ReplyKeyboardBuilder()
+    builder.button(text="🔍 Поиск контента")
+    builder.button(text="🎵 Поиск музыки (MP3)")
+    builder.button(text="🎬 Видеоклипы")
+    builder.button(text="📊 Статус")
+    if user_id in config.ADMIN_IDS:
+        builder.button(text="⚙️ Админ")
+    builder.adjust(2, 2)
+    return builder.as_markup(resize_keyboard=True, persistent=True)
 
 async def setup_bot_commands():
     """Устанавливает официальное меню команд Telegram (синяя кнопка 'Menu' / '/' слева от строки ввода)"""
@@ -176,7 +184,7 @@ async def cmd_start(message: types.Message):
         await message.answer(welcome_text, reply_markup=get_subscription_keyboard(channels))
     else:
         welcome_text += "\n📥 Отправьте мне **ссылку**, **файл** или выберите команду в меню **Menu** (слева внизу)!"
-        await message.answer(welcome_text, reply_markup=remove_reply_keyboard())
+        await message.answer(welcome_text, reply_markup=get_main_reply_keyboard(user_id))
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
