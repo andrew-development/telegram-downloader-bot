@@ -681,33 +681,17 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
     )
 
     photo_url = item.get('thumbnail')
-    
+    if photo_url:
+        caption = f'<a href="{photo_url}">&#8203;</a>' + caption
+
     if message_to_edit:
         try:
-            if photo_url:
-                await message_to_edit.edit_media(
-                    media=types.InputMediaPhoto(media=photo_url, caption=caption, parse_mode="HTML"),
-                    reply_markup=builder.as_markup()
-                )
-                return
-            else:
-                await message_to_edit.edit_text(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
-                return
+            await message_to_edit.edit_text(caption, reply_markup=builder.as_markup(), parse_mode="HTML", disable_web_page_preview=False)
+            return
         except Exception as edit_err:
             logger.warning(f"⚠️ Ошибка редактирования карточки: {edit_err}")
-            try:
-                await message_to_edit.delete()
-            except Exception:
-                pass
 
-    if photo_url:
-        try:
-            await bot.send_photo(chat_id, photo=photo_url, caption=caption, reply_markup=builder.as_markup(), parse_mode="HTML")
-            return
-        except Exception as ph_err:
-            logger.warning(f"⚠️ Не удалось отправить фото {photo_url}: {ph_err}")
-            
-    await bot.send_message(chat_id, caption, reply_markup=builder.as_markup(), parse_mode="HTML")
+    await bot.send_message(chat_id, caption, reply_markup=builder.as_markup(), parse_mode="HTML", disable_web_page_preview=False)
 
 @dp.callback_query(F.data.startswith("snav:"))
 async def cb_search_nav(callback: types.CallbackQuery):
