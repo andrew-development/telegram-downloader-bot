@@ -338,7 +338,7 @@ def get_video_dimensions(file_path: str) -> tuple:
             '-of', 'csv=s=x:p=0',
             file_path
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         if res.returncode == 0 and res.stdout.strip():
             w, h = res.stdout.strip().split('x')
             return int(w), int(h)

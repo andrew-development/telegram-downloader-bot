@@ -895,15 +895,22 @@ async def cb_download(callback: types.CallbackQuery):
         file_size = os.path.getsize(file_path)
         file_size_mb = round(file_size / (1024 * 1024), 2)
         
-        await callback.message.edit_text(f"📤 Загружаю файл в Telegram ({file_size_mb} МБ)...")
+        cancel_b = InlineKeyboardBuilder()
+        cancel_b.button(text="🛑 Отменить загрузку", callback_data=f"cancel_dl:{req_id}")
+        await callback.message.edit_text(
+            f"📤 Загружаю файл в Telegram ({file_size_mb} МБ)...",
+            reply_markup=cancel_b.as_markup()
+        )
         caption = format_caption(title, prefix="✅", suffix=quality)
         
         if file_size <= 49 * 1024 * 1024:
             input_file = types.FSInputFile(file_path)
             ext = os.path.splitext(file_path)[1].lower()
             if ext in ['.mp4', '.mkv', '.mov', '.avi']:
-                get_dim = getattr(downloader, 'get_video_dimensions', None)
-                w, h = get_dim(file_path) if callable(get_dim) else (None, None)
+                try:
+                    w, h = await asyncio.wait_for(asyncio.to_thread(downloader.get_video_dimensions, file_path), timeout=3.0)
+                except Exception:
+                    w, h = None, None
                 await bot.send_video(
                     chat_id=user_id,
                     video=input_file,
