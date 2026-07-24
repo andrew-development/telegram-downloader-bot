@@ -137,10 +137,10 @@ def get_video_info(url: str) -> dict:
 
     # 3. Безопасные клиенты YouTube (android_creator, tv_embedded, android_embedded)
     client_combos = [
-        ['android_creator'],
+        ['android_vr'],
         ['tv_embedded'],
         ['android_embedded'],
-        ['android_vr']
+        ['web_embedded']
     ]
     
     last_exc = None
@@ -557,12 +557,12 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         height = 360
 
     client_combos = [
-        ['mweb'],
-        ['ios'],
-        ['android'],
-        ['tv_embedded'],
         ['android_vr'],
-        ['web']
+        ['tv_embedded'],
+        ['android_embedded'],
+        ['web_embedded'],
+        ['ios'],
+        ['mweb']
     ]
 
     last_error = None
