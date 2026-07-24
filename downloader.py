@@ -87,9 +87,9 @@ def fetch_loader_to_url(video_url: str, quality: str = '1080p') -> str | None:
                 d1 = r1.json()
                 progress_url = d1.get('progress_url')
                 if progress_url:
-                    for _ in range(12):
-                        time.sleep(1)
-                        r2 = requests.get(progress_url, headers=headers, timeout=5)
+                    for _ in range(4):
+                        time.sleep(0.8)
+                        r2 = requests.get(progress_url, headers=headers, timeout=3)
                         if r2.status_code == 200:
                             d2 = r2.json()
                             d_url = d2.get('download_url')
@@ -553,12 +553,16 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         height = 720
     elif quality == '480p':
         height = 480
+    elif quality == '360p':
+        height = 360
 
     client_combos = [
-        ['android_creator'],
+        ['mweb'],
+        ['ios'],
+        ['android'],
         ['tv_embedded'],
-        ['android_embedded'],
-        ['android_vr']
+        ['android_vr'],
+        ['web']
     ]
 
     last_error = None

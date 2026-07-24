@@ -485,10 +485,11 @@ async def handle_link(message: types.Message):
         builder.button(text="🎬 1080p (Высокое)", callback_data=f"q:{req_id}:1080p")
         builder.button(text="🎬 720p (Среднее)", callback_data=f"q:{req_id}:720p")
         builder.button(text="🎬 480p (Низкое)", callback_data=f"q:{req_id}:480p")
+        builder.button(text="🎬 360p (Эконом)", callback_data=f"q:{req_id}:360p")
         builder.button(text="🎵 MP3 (Только Аудио)", callback_data=f"q:{req_id}:mp3")
         builder.button(text="✂️ Вырезать фрагмент", callback_data=f"trim_init:{req_id}")
         builder.button(text="🖼 Обложка (4K)", callback_data=f"thumb:{req_id}")
-        builder.adjust(2, 2, 2)
+        builder.adjust(2, 2, 2, 1)
         
         caption = format_caption(raw_title, prefix="🎥", suffix="Выберите качество или действие:")
         await message.answer(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -672,15 +673,18 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
         builder.button(text="🎬 1080p (Высокое)", callback_data=f"q:{req_id}:1080p")
         builder.button(text="🎬 720p (Среднее)", callback_data=f"q:{req_id}:720p")
         builder.button(text="🎬 480p (Низкое)", callback_data=f"q:{req_id}:480p")
+        builder.button(text="🎬 360p (Эконом)", callback_data=f"q:{req_id}:360p")
         builder.button(text="🎵 Извлечь MP3", callback_data=f"q:{req_id}:mp3")
-        builder.adjust(2, 2)
+        builder.adjust(2, 2, 1)
     else:
         if search_data.get('media_type') == 'photo':
             builder.button(text="🖼 Скачать обложку", callback_data=f"thumb:{req_id}")
         else:
             builder.button(text="🎬 Скачать 720p", callback_data=f"q:{req_id}:720p")
             builder.button(text="🎬 Скачать 1080p", callback_data=f"q:{req_id}:1080p")
+            builder.button(text="🎬 Скачать 360p (Эконом)", callback_data=f"q:{req_id}:360p")
             builder.button(text="🎵 Только Аудио (MP3)", callback_data=f"q:{req_id}:mp3")
+            builder.adjust(2, 2)
             
     nav_buttons = []
     if idx > 0:
