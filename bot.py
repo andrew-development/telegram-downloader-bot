@@ -507,32 +507,9 @@ async def handle_link(message: types.Message):
 async def start_media_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🔴 YouTube", callback_data="sp:YouTube")
-    builder.button(text="🎵 TikTok", callback_data="sp:TikTok")
-    builder.button(text="📸 Instagram", callback_data="sp:Instagram")
-    builder.button(text="🔵 Facebook", callback_data="sp:Facebook")
-    builder.adjust(2, 2)
-    await message.answer("🔍 **Выберите платформу для поиска:**", reply_markup=builder.as_markup(), parse_mode="Markdown")
-
-@dp.callback_query(F.data.startswith("sp:"))
-async def cb_select_platform(callback: types.CallbackQuery, state: FSMContext):
-    platform = callback.data.split(":")[1]
-    await state.update_data(search_platform=platform)
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🎬 Видео", callback_data="st:video")
-    builder.button(text="🖼 Фото / Обложка", callback_data="st:photo")
-    builder.adjust(2)
-    await callback.message.edit_text(f"📌 Платформа: **{platform}**\n\n**Выберите тип контента:**", reply_markup=builder.as_markup(), parse_mode="Markdown")
-
-@dp.callback_query(F.data.startswith("st:"))
-async def cb_select_mediatype(callback: types.CallbackQuery, state: FSMContext):
-    media_type = callback.data.split(":")[1]
-    await state.update_data(search_mediatype=media_type)
     await state.set_state(BotStates.waiting_for_search_keywords)
-    type_name = "видео" if media_type == "video" else "фото/обложек"
-    await callback.message.edit_text(
-        f"🔍 **Поиск {type_name}**\n\nВведите тему или ключевые слова (например: `ремонт авто` или `смешные коты`):",
+    await message.answer(
+        "🔍 **Поиск видео и контента**\n\nВведите тему или ключевые слова (например: `американские акции` или `ремонт авто`):",
         parse_mode="Markdown"
     )
 
@@ -542,7 +519,7 @@ async def start_clip_search(message: types.Message, state: FSMContext):
         return
     await state.set_state(BotStates.waiting_for_clip_keywords)
     await message.answer(
-        "🎬 **Поиск официальных видеоклипов**\n\nВведите название клипа или исполнителя (опечатки автоматически исправляются, например: `Michael Jackson Smooth Criminal` или `Анна Асти`):",
+        "🎬 **Поиск официальных видеоклипов**\n\nВведите название клипа или исполнителя (опечатки автоматически исправляются, например: `Michael Jackson` или `Анна Асти`):",
         parse_mode="Markdown"
     )
 
@@ -552,7 +529,7 @@ async def process_clip_query(message: types.Message, state: FSMContext):
     query = message.text.strip()
     status_msg = await message.answer(f"🔎 Ищу музыкальные видеоклипы: **{query}**...", parse_mode="Markdown")
     
-    results = await asyncio.to_thread(downloader.search_music_videos, query, 5)
+    results = await asyncio.to_thread(downloader.search_music_videos, query, 15)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу. Попробуйте уточнить запрос.")
         return
@@ -583,7 +560,7 @@ async def process_music_query(message: types.Message, state: FSMContext):
     query = message.text.strip()
     status_msg = await message.answer(f"🔎 Ищу аудиотреки: **{query}**...", parse_mode="Markdown")
     
-    results = await asyncio.to_thread(downloader.search_music, query, 5)
+    results = await asyncio.to_thread(downloader.search_music, query, 15)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу. Попробуйте уточнить название.")
         return
@@ -599,15 +576,17 @@ async def process_music_query(message: types.Message, state: FSMContext):
     await send_search_card(message.chat.id, search_id)
 
 @dp.message(BotStates.waiting_for_search_keywords)
+@dp.message(F.text & ~F.text.startswith("/") & ~F.text.startswith(("http://", "https://")))
 async def process_search_query(message: types.Message, state: FSMContext):
-    data = await state.get_data()
+    if message.text in ["🔍 Поиск контента", "🎵 Поиск музыки (MP3)", "🎬 Видеоклипы", "📊 Статус", "⚙️ Админ"]:
+        return
+    if not await ensure_approved_access(message):
+        return
     await state.clear()
-    platform = data.get('search_platform', 'YouTube')
-    media_type = data.get('search_mediatype', 'video')
     query = message.text.strip()
     
-    status_msg = await message.answer(f"🔎 Ищу на **{platform}**: `{query}`...", parse_mode="Markdown")
-    results = await asyncio.to_thread(downloader.search_media, platform, query, media_type, 5)
+    status_msg = await message.answer(f"🔎 Ищу видео: **{query}**...", parse_mode="Markdown")
+    results = await asyncio.to_thread(downloader.search_media, "YouTube", query, "video", 15)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу.")
         return
@@ -617,8 +596,8 @@ async def process_search_query(message: types.Message, state: FSMContext):
         'results': results,
         'index': 0,
         'query': query,
-        'platform': platform,
-        'media_type': media_type,
+        'platform': 'YouTube',
+        'media_type': 'video',
         'is_music': False
     }
     await status_msg.delete()
