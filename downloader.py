@@ -219,6 +219,40 @@ def search_music(query: str, limit: int = 5) -> list:
         logger.error(f"Ошибка поиска музыки: {e}")
         return []
 
+def search_music_videos(query: str, limit: int = 5) -> list:
+    """Опечаткоустойчивый поиск официальных видеоклипов (Vevo/YouTube Music/VK)"""
+    query = query.strip()
+    search_term = f"ytsearch{limit}:{query} official music video vevo"
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': 'in_playlist',
+        'default_search': 'ytsearch',
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_term, download=False)
+            results = []
+            entries = info.get('entries', [])
+            for entry in entries:
+                if entry:
+                    v_id = entry.get('id')
+                    title = entry.get('title', 'Без названия')
+                    results.append({
+                        'id': v_id,
+                        'title': title,
+                        'url': f"https://www.youtube.com/watch?v={v_id}",
+                        'duration': entry.get('duration', 0),
+                        'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+                    })
+            return results
+    except Exception as e:
+        logger.error(f"Ошибка поиска видеоклипов: {e}")
+        return []
+
 def search_media(platform: str, query: str, media_type: str = 'video', limit: int = 5) -> list:
     """Универсальный опечаткоустойчивый поиск медиаконтента (видео или фото)"""
     query = query.strip()

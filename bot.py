@@ -28,6 +28,7 @@ class BotStates(StatesGroup):
     waiting_for_broadcast_msg = State()
     waiting_for_search_keywords = State()
     waiting_for_music_keywords = State()
+    waiting_for_clip_keywords = State()
 
 pending_downloads = {}  # req_id -> {'url', 'title'}
 active_downloads = {}   # req_id -> {'cancelled': False}
@@ -39,10 +40,11 @@ def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.button(text="🔍 Поиск контента")
     builder.button(text="🎵 Поиск музыки (MP3)")
+    builder.button(text="🎬 Видеоклипы")
     builder.button(text="📊 Статус")
     if user_id in config.ADMIN_IDS:
         builder.button(text="⚙️ Админ")
-    builder.adjust(2, 2 if user_id in config.ADMIN_IDS else 1)
+    builder.adjust(2, 2)
     return builder.as_markup(resize_keyboard=True, persistent=True)
 
 async def setup_bot_commands():
@@ -532,6 +534,37 @@ async def cb_select_mediatype(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
 
+@dp.message(F.text == "🎬 Видеоклипы")
+async def start_clip_search(message: types.Message, state: FSMContext):
+    if not await ensure_approved_access(message):
+        return
+    await state.set_state(BotStates.waiting_for_clip_keywords)
+    await message.answer(
+        "🎬 **Поиск официальных видеоклипов**\n\nВведите название клипа или исполнителя (опечатки автоматически исправляются, например: `Michael Jackson Smooth Criminal` или `Анна Асти`):",
+        parse_mode="Markdown"
+    )
+
+@dp.message(BotStates.waiting_for_clip_keywords)
+async def process_clip_query(message: types.Message, state: FSMContext):
+    await state.clear()
+    query = message.text.strip()
+    status_msg = await message.answer(f"🔎 Ищу музыкальные видеоклипы: **{query}**...", parse_mode="Markdown")
+    
+    results = await asyncio.to_thread(downloader.search_music_videos, query, 5)
+    if not results:
+        await status_msg.edit_text("❌ Ничего не найдено по вашему запросу. Попробуйте уточнить запрос.")
+        return
+        
+    search_id = f"s_{os.urandom(6).hex()}"
+    active_searches[search_id] = {
+        'results': results,
+        'index': 0,
+        'query': query,
+        'is_clip': True
+    }
+    await status_msg.delete()
+    await send_search_card(message.chat.id, search_id)
+
 @dp.message(F.text == "🎵 Поиск музыки (MP3)")
 async def start_music_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
@@ -607,15 +640,24 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
     
     total = len(results)
     
+    is_clip = search_data.get('is_clip', False)
     if is_music:
         caption = f"🎵 **Найденный аудиотрек [{idx+1}/{total}]**\n\n📌 **Трек**: {html.escape(item['title'])}\n"
+    elif is_clip:
+        caption = f"🎬 **Найденный видеоклип [{idx+1}/{total}]**\n\n📌 **Клип**: {html.escape(item['title'])}\n"
     else:
         media_icon = "🎬" if search_data.get('media_type') == 'video' else "🖼"
-        caption = f"{media_icon} **Результат поиска [{idx+1}/{total}]**\n\n📌 **Название**: {html.escape(item['title'])}\n🌐 **Платформа**: {search_data.get('platform')}\n"
+        caption = f"{media_icon} **Результат поиска [{idx+1}/{total}]**\n\n📌 **Название**: {html.escape(item['title'])}\n🌐 **Платформа**: {search_data.get('platform', 'YouTube')}\n"
 
     builder = InlineKeyboardBuilder()
     if is_music:
         builder.button(text="🎵 Скачать MP3", callback_data=f"q:{req_id}:mp3")
+    elif is_clip:
+        builder.button(text="🎬 1080p (Высокое)", callback_data=f"q:{req_id}:1080p")
+        builder.button(text="🎬 720p (Среднее)", callback_data=f"q:{req_id}:720p")
+        builder.button(text="🎬 480p (Низкое)", callback_data=f"q:{req_id}:480p")
+        builder.button(text="🎵 Извлечь MP3", callback_data=f"q:{req_id}:mp3")
+        builder.adjust(2, 2)
     else:
         if search_data.get('media_type') == 'photo':
             builder.button(text="🖼 Скачать обложку", callback_data=f"thumb:{req_id}")
