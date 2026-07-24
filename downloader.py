@@ -15,20 +15,17 @@ class DownloadCancelledError(Exception):
     pass
 
 def resolve_redirect_url(url: str) -> str:
-    """Раскрывает и нормализует короткие ссылки (Shorts, youtu.be, Facebook share, TikTok vt, Twitter x.com)"""
+    """Раскрывает и полностью очищает ссылки (YouTube, Shorts, youtu.be, Facebook share, TikTok vt, Twitter x.com)"""
     url = url.strip()
-    if 'youtube.com/shorts/' in url:
-        match = re.search(r'shorts/([a-zA-Z0-9_-]+)', url)
-        if match:
-            clean_yt = f"https://www.youtube.com/watch?v={match.group(1)}"
-            logger.info(f"🔄 Преобразована ссылка Shorts: {url} -> {clean_yt}")
+    
+    # 1. Глубокая очистка всех вариантов ссылок YouTube (m.youtube.com, Shorts, youtu.be, si=..., feature=shared)
+    if 'youtube.com' in url or 'youtu.be' in url:
+        yt_match = re.search(r'(?:v=|shorts/|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})', url)
+        if yt_match:
+            clean_yt = f"https://www.youtube.com/watch?v={yt_match.group(1)}"
+            logger.info(f"🔄 Очищена и нормализована ссылка YouTube: {url} -> {clean_yt}")
             return clean_yt
-    elif 'youtu.be/' in url:
-        match = re.search(r'youtu\.be/([a-zA-Z0-9_-]+)', url)
-        if match:
-            clean_yt = f"https://www.youtube.com/watch?v={match.group(1)}"
-            logger.info(f"🔄 Преобразована ссылка youtu.be: {url} -> {clean_yt}")
-            return clean_yt
+
     elif 'facebook.com/share/' in url or 'fb.watch/' in url:
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -119,6 +116,24 @@ def get_video_info(url: str) -> dict:
         fast_tw = fetch_fast_twitter(clean_url)
         if fast_tw:
             return {'title': fast_tw['title'], 'duration': 0, 'thumbnail': None, 'formats': [], 'direct_info': fast_tw}
+
+    # 3. Для YouTube мгновенное получение метаданных через гарантированный OEmbed API
+    if 'youtube.com' in clean_url or 'youtu.be' in clean_url:
+        try:
+            r_oe = requests.get(f"https://www.youtube.com/oembed?url={clean_url}&format=json", timeout=3)
+            if r_oe.status_code == 200:
+                oe_data = r_oe.json()
+                title = oe_data.get('title', 'Видео с YouTube')
+                thumb = oe_data.get('thumbnail_url')
+                logger.info(f"⚡ Метаданные YouTube успешно получены через OEmbed API: {title}")
+                return {
+                    'title': title,
+                    'duration': 0,
+                    'thumbnail': thumb,
+                    'formats': []
+                }
+        except Exception as oe_err:
+            logger.warning(f"⚠️ OEmbed API недоступен: {oe_err}")
 
     # 3. Безопасные клиенты YouTube (android_creator, tv_embedded, android_embedded)
     client_combos = [
