@@ -631,6 +631,8 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
     item = results[idx]
     
     is_music = search_data.get('is_music', False)
+    is_clip = search_data.get('is_clip', False)
+    
     req_id = f"dl_{os.urandom(6).hex()}"
     pending_downloads[req_id] = {
         'url': item['url'],
@@ -639,15 +641,33 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
     database.save_pending_download(req_id, item['url'], item['title'])
     
     total = len(results)
+    uploader = html.escape(item.get('uploader', 'Неизвестно'))
+    duration = item.get('duration_str', 'Неизвестно')
+    title_esc = html.escape(item['title'])
     
-    is_clip = search_data.get('is_clip', False)
     if is_music:
-        caption = f"🎵 **Найденный аудиотрек [{idx+1}/{total}]**\n\n📌 **Трек**: {html.escape(item['title'])}\n"
+        caption = (
+            f"🎵 <b>Найденный аудиотрек [{idx+1}/{total}]</b>\n\n"
+            f"📌 <b>Название</b>: {title_esc}\n"
+            f"👤 <b>Исполнитель/Канал</b>: {uploader}\n"
+            f"⏱ <b>Длительность</b>: {duration}\n"
+        )
     elif is_clip:
-        caption = f"🎬 **Найденный видеоклип [{idx+1}/{total}]**\n\n📌 **Клип**: {html.escape(item['title'])}\n"
+        caption = (
+            f"🎬 <b>Найденный видеоклип [{idx+1}/{total}]</b>\n\n"
+            f"📌 <b>Клип</b>: {title_esc}\n"
+            f"👤 <b>Автор/Канал</b>: {uploader}\n"
+            f"⏱ <b>Длительность</b>: {duration}\n"
+        )
     else:
         media_icon = "🎬" if search_data.get('media_type') == 'video' else "🖼"
-        caption = f"{media_icon} **Результат поиска [{idx+1}/{total}]**\n\n📌 **Название**: {html.escape(item['title'])}\n🌐 **Платформа**: {search_data.get('platform', 'YouTube')}\n"
+        caption = (
+            f"{media_icon} <b>Результат поиска [{idx+1}/{total}]</b>\n\n"
+            f"📌 <b>Название</b>: {title_esc}\n"
+            f"👤 <b>Автор/Канал</b>: {uploader}\n"
+            f"⏱ <b>Длительность</b>: {duration}\n"
+            f"🌐 <b>Платформа</b>: {search_data.get('platform', 'YouTube')}\n"
+        )
 
     builder = InlineKeyboardBuilder()
     if is_music:
@@ -673,15 +693,39 @@ async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.
         nav_buttons.append(types.InlineKeyboardButton(text="Вперед ➡️", callback_data=f"snav:{search_id}:next"))
     if nav_buttons:
         builder.row(*nav_buttons)
-    builder.row(types.InlineKeyboardButton(text="❌ Закрыть", callback_data=f"snav:{search_id}:close"))
+        
+    builder.row(
+        types.InlineKeyboardButton(text="🔄 Свежие варианты", callback_data=f"snav:{search_id}:refresh"),
+        types.InlineKeyboardButton(text="❌ Закрыть", callback_data=f"snav:{search_id}:close")
+    )
 
+    photo_url = item.get('thumbnail')
+    
     if message_to_edit:
         try:
-            await message_to_edit.edit_text(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
-            return
-        except Exception:
-            pass
+            if photo_url:
+                await message_to_edit.edit_media(
+                    media=types.InputMediaPhoto(media=photo_url, caption=caption, parse_mode="HTML"),
+                    reply_markup=builder.as_markup()
+                )
+                return
+            else:
+                await message_to_edit.edit_text(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
+                return
+        except Exception as edit_err:
+            logger.warning(f"⚠️ Ошибка редактирования карточки: {edit_err}")
+            try:
+                await message_to_edit.delete()
+            except Exception:
+                pass
 
+    if photo_url:
+        try:
+            await bot.send_photo(chat_id, photo=photo_url, caption=caption, reply_markup=builder.as_markup(), parse_mode="HTML")
+            return
+        except Exception as ph_err:
+            logger.warning(f"⚠️ Не удалось отправить фото {photo_url}: {ph_err}")
+            
     await bot.send_message(chat_id, caption, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 @dp.callback_query(F.data.startswith("snav:"))
@@ -695,12 +739,19 @@ async def cb_search_nav(callback: types.CallbackQuery):
     if action == "close":
         active_searches.pop(search_id, None)
         await callback.message.delete()
-        await callback.answer()
+        await callback.answer("Поиск закрыт.")
         return
     elif action == "prev":
         search_data['index'] = max(0, search_data['index'] - 1)
     elif action == "next":
         search_data['index'] = min(len(search_data['results']) - 1, search_data['index'] + 1)
+    elif action == "refresh":
+        # Перескакиваем на следующую пятерку результатов или зацикливаем
+        new_idx = (search_data['index'] + 5) % len(search_data['results'])
+        search_data['index'] = new_idx
+        await callback.answer("Загружены новые варианты!")
+        await send_search_card(callback.message.chat.id, search_id, callback.message)
+        return
         
     await send_search_card(callback.message.chat.id, search_id, callback.message)
     await callback.answer()

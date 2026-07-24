@@ -185,8 +185,20 @@ def get_video_info(url: str) -> dict:
         'formats': []
     }
 
-def search_music(query: str, limit: int = 5) -> list:
-    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3)"""
+def format_duration_str(seconds) -> str:
+    """Форматирует секундное время в формат MM:SS или HH:MM:SS"""
+    if not seconds or not isinstance(seconds, (int, float)):
+        return "Неизвестно"
+    seconds = int(seconds)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+def search_music(query: str, limit: int = 15) -> list:
+    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора"""
     query = query.strip()
     search_term = f"ytsearch{limit}:{query} audio"
     ydl_opts = {
@@ -207,11 +219,14 @@ def search_music(query: str, limit: int = 5) -> list:
                 if entry:
                     v_id = entry.get('id')
                     title = entry.get('title', 'Без названия')
+                    uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Неизвестный исполнитель'
+                    dur_str = format_duration_str(entry.get('duration'))
                     results.append({
                         'id': v_id,
                         'title': title,
+                        'uploader': uploader,
+                        'duration_str': dur_str,
                         'url': f"https://www.youtube.com/watch?v={v_id}",
-                        'duration': entry.get('duration', 0),
                         'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })
             return results
@@ -219,10 +234,10 @@ def search_music(query: str, limit: int = 5) -> list:
         logger.error(f"Ошибка поиска музыки: {e}")
         return []
 
-def search_music_videos(query: str, limit: int = 5) -> list:
-    """Опечаткоустойчивый поиск официальных видеоклипов (Vevo/YouTube Music/VK)"""
+def search_music_videos(query: str, limit: int = 15) -> list:
+    """Опечаткоустойчивый поиск официальных видеоклипов с авторами и превью"""
     query = query.strip()
-    search_term = f"ytsearch{limit}:{query} official music video vevo"
+    search_term = f"ytsearch{limit}:{query} official music video"
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -241,11 +256,14 @@ def search_music_videos(query: str, limit: int = 5) -> list:
                 if entry:
                     v_id = entry.get('id')
                     title = entry.get('title', 'Без названия')
+                    uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Музыкальный канал'
+                    dur_str = format_duration_str(entry.get('duration'))
                     results.append({
                         'id': v_id,
                         'title': title,
+                        'uploader': uploader,
+                        'duration_str': dur_str,
                         'url': f"https://www.youtube.com/watch?v={v_id}",
-                        'duration': entry.get('duration', 0),
                         'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })
             return results
@@ -253,8 +271,8 @@ def search_music_videos(query: str, limit: int = 5) -> list:
         logger.error(f"Ошибка поиска видеоклипов: {e}")
         return []
 
-def search_media(platform: str, query: str, media_type: str = 'video', limit: int = 5) -> list:
-    """Универсальный опечаткоустойчивый поиск медиаконтента (видео или фото)"""
+def search_media(platform: str, query: str, media_type: str = 'video', limit: int = 15) -> list:
+    """Универсальный опечаткоустойчивый поиск медиаконтента с информацией об авторе"""
     query = query.strip()
     search_term = f"ytsearch{limit}:{platform} {query}"
     if media_type == 'photo':
@@ -278,11 +296,14 @@ def search_media(platform: str, query: str, media_type: str = 'video', limit: in
                 if entry:
                     v_id = entry.get('id')
                     title = entry.get('title', 'Без названия')
+                    uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Автор не указан'
+                    dur_str = format_duration_str(entry.get('duration'))
                     results.append({
                         'id': v_id,
                         'title': title,
+                        'uploader': uploader,
+                        'duration_str': dur_str,
                         'url': f"https://www.youtube.com/watch?v={v_id}",
-                        'duration': entry.get('duration', 0),
                         'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
                     })
             return results
