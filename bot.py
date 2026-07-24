@@ -165,16 +165,18 @@ async def cmd_start(message: types.Message):
     if not approved:
         return
         
-    is_sub, channels = await check_user_subscription(user_id)
     welcome_text = (
         f"Привет, {message.from_user.first_name}! 👋\n\n"
         f"Я персональный бот для скачивания и редактирования медиа.\n\n"
         f"✨ **Что я умею:**\n"
         f"• Скачивать видео из YouTube, TikTok, Instagram, Facebook (до 2 ГБ).\n"
         f"• ✂️ **Вырезать фрагмент из любого отправленного видео или аудио!**\n"
-        f"• 🎵 Конвертировать любое видео в MP3.\n"
-        f"• 🔍 Искать ролик на YouTube прямо по названию.\n\n"
-        f"📊 `/stats` — Ваша статистика\n"
+        f"• 🎵 Конвертировать любое видео в MP3.\n\n"
+        f"📋 **Главное меню и функции:**\n"
+        f"🔍 `/search` — Поиск контента (Видео / Фото)\n"
+        f"🎵 `/music` — Поиск музыки (MP3)\n"
+        f"🎬 `/clips` — Поиск видеоклипов\n"
+        f"📊 `/stats` — Ваша статистика скачиваний\n"
     )
     if user_id in config.ADMIN_IDS:
         welcome_text += f"⚙️ `/admin` — Панель администратора\n"
@@ -503,7 +505,8 @@ async def handle_link(message: types.Message):
         except Exception:
             await message.answer(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
 
-@dp.message(Command("search") | (F.text == "🔍 Поиск контента"))
+@dp.message(Command("search"))
+@dp.message(F.text.contains("Поиск контента"))
 async def start_media_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
@@ -513,7 +516,8 @@ async def start_media_search(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-@dp.message(Command("clips") | (F.text == "🎬 Видеоклипы"))
+@dp.message(Command("clips"))
+@dp.message(F.text.contains("Видеоклипы"))
 async def start_clip_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
@@ -544,13 +548,14 @@ async def process_clip_query(message: types.Message, state: FSMContext):
     await status_msg.delete()
     await send_search_card(message.chat.id, search_id)
 
-@dp.message(Command("music") | (F.text == "🎵 Поиск музыки (MP3)"))
+@dp.message(Command("music"))
+@dp.message(F.text.contains("Поиск музыки"))
 async def start_music_search(message: types.Message, state: FSMContext):
     if not await ensure_approved_access(message):
         return
     await state.set_state(BotStates.waiting_for_music_keywords)
     await message.answer(
-        "🎧 **Поиск музыки (MP3)**\n\nВведите название песни или исполнителя (опечатки автоматически исправляются, например: `Queen Bohemian` или `Баста`):",
+        "🎧 **Поиск музыки (MP3)**\n\nВведите название песни или исполнителя (опечатки автоматически исправляются, например: `Queen` или `Баста`):",
         parse_mode="Markdown"
     )
 
@@ -576,10 +581,7 @@ async def process_music_query(message: types.Message, state: FSMContext):
     await send_search_card(message.chat.id, search_id)
 
 @dp.message(BotStates.waiting_for_search_keywords)
-@dp.message(F.text & ~F.text.startswith("/") & ~F.text.startswith(("http://", "https://")))
 async def process_search_query(message: types.Message, state: FSMContext):
-    if message.text in ["🔍 Поиск контента", "🎵 Поиск музыки (MP3)", "🎬 Видеоклипы", "📊 Статус", "⚙️ Админ"]:
-        return
     if not await ensure_approved_access(message):
         return
     await state.clear()
@@ -602,6 +604,15 @@ async def process_search_query(message: types.Message, state: FSMContext):
     }
     await status_msg.delete()
     await send_search_card(message.chat.id, search_id)
+
+@dp.message(F.text & ~F.text.startswith("/") & ~F.text.startswith(("http://", "https://")))
+async def fallback_text_search(message: types.Message, state: FSMContext):
+    if any(k in message.text for k in ["Поиск контента", "Поиск музыки", "Видеоклипы", "Статус", "Админ"]):
+        return
+    current_state = await state.get_state()
+    if current_state:
+        return
+    await process_search_query(message, state)
 
 async def send_search_card(chat_id: int, search_id: str, message_to_edit: types.Message = None):
     search_data = active_searches.get(search_id)
