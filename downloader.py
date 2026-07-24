@@ -197,8 +197,8 @@ def format_duration_str(seconds) -> str:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
 
-def search_music(query: str, limit: int = 15) -> list:
-    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора"""
+def search_music(query: str, limit: int = 50) -> list:
+    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора (до 50 результатов)"""
     query = query.strip()
     search_term = f"ytsearch{limit}:{query} audio"
     ydl_opts = {
@@ -234,8 +234,8 @@ def search_music(query: str, limit: int = 15) -> list:
         logger.error(f"Ошибка поиска музыки: {e}")
         return []
 
-def search_music_videos(query: str, limit: int = 15) -> list:
-    """Опечаткоустойчивый поиск официальных видеоклипов с авторами и превью"""
+def search_music_videos(query: str, limit: int = 50) -> list:
+    """Опечаткоустойчивый поиск официальных видеоклипов с авторами и превью (до 50 результатов)"""
     query = query.strip()
     search_term = f"ytsearch{limit}:{query} official music video"
     ydl_opts = {
@@ -271,8 +271,8 @@ def search_music_videos(query: str, limit: int = 15) -> list:
         logger.error(f"Ошибка поиска видеоклипов: {e}")
         return []
 
-def search_media(platform: str, query: str, media_type: str = 'video', limit: int = 15) -> list:
-    """Универсальный опечаткоустойчивый поиск медиаконтента с информацией об авторе"""
+def search_media(platform: str, query: str, media_type: str = 'video', limit: int = 50) -> list:
+    """Универсальный опечаткоустойчивый поиск медиаконтента с информацией об авторе (до 50 результатов)"""
     query = query.strip()
     search_term = f"ytsearch{limit}:{platform} {query}"
     if media_type == 'photo':
@@ -584,6 +584,16 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
                         break
                 
                 if final_path and os.path.exists(final_path):
+                    if quality == 'mp3':
+                        if not final_path.lower().endswith('.mp3'):
+                            mp3_path = convert_local_to_mp3(final_path)
+                            try:
+                                os.remove(final_path)
+                            except Exception:
+                                pass
+                            final_path = mp3_path
+                        return final_path
+                        
                     final_path = ensure_h264_for_ios(final_path)
                     final_path = compress_video_for_bot_api(final_path)
                     return final_path

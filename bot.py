@@ -722,10 +722,12 @@ async def cb_search_nav(callback: types.CallbackQuery):
     elif action == "next":
         search_data['index'] = min(len(search_data['results']) - 1, search_data['index'] + 1)
     elif action == "refresh":
-        # Перескакиваем на следующую пятерку результатов или зацикливаем
-        new_idx = (search_data['index'] + 5) % len(search_data['results'])
+        total_len = len(search_data['results'])
+        new_idx = search_data['index'] + 5
+        if new_idx >= total_len:
+            new_idx = 0
         search_data['index'] = new_idx
-        await callback.answer("Загружены новые варианты!")
+        await callback.answer(f"Показаны варианты {new_idx+1}-{min(new_idx+5, total_len)} из {total_len}!")
         await send_search_card(callback.message.chat.id, search_id, callback.message)
         return
         
@@ -906,7 +908,9 @@ async def cb_download(callback: types.CallbackQuery):
         if file_size <= 49 * 1024 * 1024:
             input_file = types.FSInputFile(file_path)
             ext = os.path.splitext(file_path)[1].lower()
-            if ext in ['.mp4', '.mkv', '.mov', '.avi']:
+            if quality == 'mp3' or ext == '.mp3':
+                await bot.send_audio(chat_id=user_id, audio=input_file, caption=caption, parse_mode="HTML")
+            elif ext in ['.mp4', '.mkv', '.mov', '.avi']:
                 try:
                     w, h = await asyncio.wait_for(asyncio.to_thread(downloader.get_video_dimensions, file_path), timeout=3.0)
                 except Exception:
@@ -920,8 +924,6 @@ async def cb_download(callback: types.CallbackQuery):
                     supports_streaming=True,
                     parse_mode="HTML"
                 )
-            elif ext == '.mp3':
-                await bot.send_audio(chat_id=user_id, audio=input_file, caption=caption, parse_mode="HTML")
             else:
                 await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="HTML")
         else:
