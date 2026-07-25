@@ -48,7 +48,7 @@ def get_main_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
     return builder.as_markup(resize_keyboard=True, persistent=True)
 
 async def setup_bot_commands():
-    """Устанавливает официальное меню команд Telegram (синяя кнопка 'Menu' / '/' слева от строки ввода)"""
+    """Устанавливает имя бота MediaFlow и официальное меню команд Telegram"""
     commands = [
         types.BotCommand(command="start", description="🚀 Перезапуск и главное меню"),
         types.BotCommand(command="search", description="🔍 Поиск контента (Видео / Фото)"),
@@ -58,10 +58,13 @@ async def setup_bot_commands():
         types.BotCommand(command="admin", description="⚙️ Панель администратора"),
     ]
     try:
+        await bot.set_my_name("MediaFlow")
+        await bot.set_my_short_description("🚀 MediaFlow — ваш персональный бот для скачивания и поиска медиаконтента!")
+        await bot.set_my_description("🌟 Привет! Я MediaFlow — персональный бот для анонимного скачивания и поиска видео, музыки MP3 и клипов без регистрации!")
         await bot.set_my_commands(commands)
-        logger.info("✅ Официальное меню команд Telegram (6 пунктов) успешно зарегистрировано!")
+        logger.info("✅ Имя бота 'MediaFlow' и официальное меню Telegram (6 пунктов) успешно зарегистрированы!")
     except Exception as e:
-        logger.error(f" Ошибка установки команд бота: {e}")
+        logger.error(f" Ошибка установки настроек бота: {e}")
 
 async def check_user_subscription(user_id: int) -> tuple[bool, list[dict]]:
     if not config.REQUIRED_CHANNELS:
@@ -167,11 +170,11 @@ async def cmd_start(message: types.Message):
         
     welcome_text = (
         f"Привет, {message.from_user.first_name}! 👋\n\n"
-        f"Я персональный бот для скачивания и редактирования медиа.\n\n"
+        f"Я **MediaFlow** — твой персональный бот для скачивания и поиска медиа.\n\n"
         f"✨ **Что я умею:**\n"
         f"• Скачивать видео из YouTube, TikTok, Instagram, Facebook (до 2 ГБ).\n"
         f"• ✂️ **Вырезать фрагмент из любого отправленного видео или аудио!**\n"
-        f"• 🎵 Конвертировать любое видео в MP3.\n\n"
+        f"• 🎵 Конвертировать любое видео в чистый MP3.\n\n"
         f"📋 **Главное меню и функции:**\n"
         f"🔍 `/search` — Поиск контента (Видео / Фото)\n"
         f"🎵 `/music` — Поиск музыки (MP3)\n"
