@@ -177,7 +177,7 @@ def get_video_info(url: str) -> dict:
             'retries': 2,
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'js_runtimes': {'node': {}},
+            'js_runtimes': {'deno': {}, 'node': {}},
             'extractor_args': {
                 'youtube': {'player_client': combo},
                 'facebook': {'facebook_mobile': [False]}
@@ -268,7 +268,7 @@ def _execute_ytsearch(search_term: str) -> list:
             'default_search': 'ytsearch',
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'js_runtimes': {'node': {}},
+            'js_runtimes': {'deno': {}, 'node': {}},
             'socket_timeout': 10,
             'retries': 2,
             'extractor_args': {
@@ -652,7 +652,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         common_opts = {
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'js_runtimes': {'node': {}},
+            'js_runtimes': {'deno': {}, 'node': {}},
             'socket_timeout': 15,
             'retries': 3,
             'fragment_retries': 3,
