@@ -741,27 +741,77 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         raise last_error
     raise FileNotFoundError("Скачанный файл не был найден на диске.")
 
+def parse_time(time_str: str) -> float:
+    """Интеллектуальная конвертация любого формата времени (MM:SS, MM;SS, MM,SS, HH:MM:SS, секунды) в float"""
+    if not time_str:
+        return 0.0
+    clean_s = str(time_str).strip().replace(';', ':').replace(',', ':')
+    if clean_s.count('.') == 1 and ':' in clean_s:
+        clean_s = clean_s.replace('.', ':')
+    elif clean_s.count('.') == 1 and not ':' in clean_s and len(clean_s.split('.')[1]) == 2:
+        clean_s = clean_s.replace('.', ':')
+
+    parts = [p.strip() for p in clean_s.split(':') if p.strip()]
+    try:
+        if len(parts) == 1:
+            return float(parts[0])
+        elif len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        elif len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка разбора времени '{time_str}': {e}")
+    return 0.0
+
+def parse_time_range(range_str: str) -> tuple[float, float]:
+    """Разбирает интервал времени любой формы ('01:25 - 02:15', '01;25-02;15', '1:25 до 2:15')"""
+    clean_r = range_str.strip().lower()
+    for sep in ['до', 'to', '—', '–', '/', '->']:
+        clean_r = clean_r.replace(sep, '-')
+    
+    parts = [p.strip() for p in clean_r.split('-') if p.strip()]
+    if len(parts) < 2:
+        raise ValueError("Укажите начало и конец отрезка через дефис (например: 01:25 - 02:15).")
+        
+    start_sec = parse_time(parts[0].strip('*'))
+    end_sec = parse_time(parts[1])
+    
+    if end_sec <= start_sec:
+        raise ValueError("Время окончания отрезка должно быть больше времени начала.")
+        
+    return start_sec, end_sec
+
 def trim_local_file(input_path: str, time_range: str) -> str:
     """Быстрая вырезка фрагмента из локального файла с помощью FFmpeg"""
-    parts = time_range.split('-')
-    start_sec = parse_time(parts[0])
-    end_sec = parse_time(parts[1])
+    start_sec, end_sec = parse_time_range(time_range)
     duration = end_sec - start_sec
-    if duration <= 0:
-        raise ValueError("Время окончания должно быть больше времени начала.")
-        
+    
     ext = os.path.splitext(input_path)[1].lower()
     file_id = str(uuid.uuid4().hex)
-    output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"trimmed_{file_id}{ext}")
+    output_path = os.path.join(DOWNLOAD_TEMP_DIR, f"trimmed_{file_id}{ext if ext in ['.mp3', '.mp4'] else '.mp4'}")
     
-    cmd = [
-        'ffmpeg', '-y',
-        '-ss', str(start_sec),
-        '-i', input_path,
-        '-t', str(duration),
-        '-c', 'copy',
-        output_path
-    ]
+    if ext == '.mp3':
+        cmd = [
+            'ffmpeg', '-y',
+            '-ss', str(start_sec),
+            '-i', input_path,
+            '-t', str(duration),
+            '-acodec', 'libmp3lame', '-ab', '192k',
+            output_path
+        ]
+    else:
+        cmd = [
+            'ffmpeg', '-y',
+            '-ss', str(start_sec),
+            '-i', input_path,
+            '-t', str(duration),
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
+            '-movflags', '+faststart',
+            '-preset', 'ultrafast',
+            '-c:a', 'aac',
+            output_path
+        ]
+        
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0 or not os.path.exists(output_path):
         cmd = [
@@ -787,14 +837,3 @@ def convert_local_to_mp3(input_path: str) -> str:
     ]
     subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     return output_path
-
-def parse_time(time_str: str) -> float:
-    """Конвертирует 'MM:SS' или 'HH:MM:SS' или секунды в float"""
-    parts = time_str.strip().split(':')
-    if len(parts) == 1:
-        return float(parts[0])
-    elif len(parts) == 2:
-        return int(parts[0]) * 60 + float(parts[1])
-    elif len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-    return 0.0
