@@ -3,7 +3,8 @@ import os
 from urllib.parse import urlparse
 import config
 
-DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "bot_database.db"))
+data_dir = os.environ.get("DATA_DIR") or os.path.dirname(__file__)
+DB_PATH = os.path.abspath(os.path.join(data_dir, "bot_database.db"))
 
 def init_db():
     """Инициализация базы данных и автоматическая миграция колонок"""
@@ -172,15 +173,19 @@ def detect_platform(url: str) -> str:
         return 'Другой ресурс'
 
 def log_download(user_id: int, url: str, title: str, file_size_mb: float, quality: str):
-    platform = detect_platform(url)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO download_history (user_id, url, title, platform, file_size_mb, quality)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (user_id, url, title, platform, file_size_mb, quality))
-    conn.commit()
-    conn.close()
+    try:
+        platform = detect_platform(url)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO download_history (user_id, url, title, platform, file_size_mb, quality)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, url, title, platform, file_size_mb, quality))
+        conn.commit()
+        conn.close()
+        print(f"📊 Статистика записи скачивания обновлена: user={user_id}, title={title[:30]}, size={file_size_mb}MB")
+    except Exception as e:
+        print(f" Ошибка записи статистики в БД: {e}")
 
 def get_user_stats(user_id: int) -> dict:
     conn = sqlite3.connect(DB_PATH)
