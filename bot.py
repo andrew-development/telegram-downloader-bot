@@ -206,6 +206,7 @@ async def cmd_admin(message: types.Message):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔑 Создать инвайт-код", callback_data="adm_gen_code")
     builder.button(text="📢 Рассылка пользователям", callback_data="adm_broadcast")
+    builder.button(text="👥 Пользователи и скачивания", callback_data="adm_users_list")
     builder.adjust(1)
     await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
@@ -252,6 +253,32 @@ async def process_broadcast_input(message: types.Message, state: FSMContext):
             pass
     await message.answer(f"✅ Рассылка завершена. Успешно доставлено: {count} пользователям.")
     await state.clear()
+
+@dp.callback_query(F.data == "adm_users_list")
+async def cb_adm_users_list(callback: types.CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        return
+    users_stats = database.get_all_users_detailed_stats()
+    
+    if not users_stats:
+        await callback.message.answer("👥 В базе пока нет зарегистрированных пользователей.")
+        await callback.answer()
+        return
+        
+    text = "👥 **Детальная статистика по пользователям:**\n\n"
+    for idx, u in enumerate(users_stats, start=1):
+        status_icon = "🟢" if u['is_approved'] else "🔴"
+        uname = f"@{u['username']}" if u['username'] != 'Без юзернейма' else u['username']
+        text += (
+            f"{idx}. {status_icon} **{u['first_name']}** ({uname})\n"
+            f"   🆔 ID: `{u['user_id']}`\n"
+            f"   📦 Скачано файлов: **{u['downloads_count']} шт.**\n"
+            f"   💾 Общий объем: **{u['total_mb']} МБ** ({(u['total_mb']/1024):.2f} ГБ)\n"
+            f"   -----------------------------------\n"
+        )
+        
+    await callback.message.answer(text, parse_mode="Markdown")
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("adm_allow:"))
 async def cb_adm_allow(callback: types.CallbackQuery):

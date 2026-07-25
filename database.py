@@ -3,7 +3,11 @@ import os
 from urllib.parse import urlparse
 import config
 
-data_dir = os.environ.get("DATA_DIR") or os.path.dirname(__file__)
+if os.name == 'posix':
+    data_dir = os.environ.get("DATA_DIR") or "/tmp"
+else:
+    data_dir = os.environ.get("DATA_DIR") or os.path.dirname(__file__)
+
 DB_PATH = os.path.abspath(os.path.join(data_dir, "bot_database.db"))
 
 def init_db():
@@ -236,3 +240,32 @@ def get_all_approved_users():
     users = [row[0] for row in cursor.fetchall()]
     conn.close()
     return users
+
+def get_all_users_detailed_stats() -> list[dict]:
+    """Возвращает список всех зарегистрированных пользователей со статистикой скачиваний для админки"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.user_id, u.username, u.first_name, u.is_approved, u.joined_at,
+               COUNT(d.id) AS downloads_count,
+               COALESCE(SUM(d.file_size_mb), 0) AS total_mb
+        FROM users u
+        LEFT JOIN download_history d ON u.user_id = d.user_id
+        GROUP BY u.user_id
+        ORDER BY downloads_count DESC, u.joined_at DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = []
+    for r in rows:
+        result.append({
+            'user_id': r[0],
+            'username': r[1] or 'Без юзернейма',
+            'first_name': r[2] or 'Без имени',
+            'is_approved': bool(r[3]),
+            'joined_at': r[4],
+            'downloads_count': r[5],
+            'total_mb': round(r[6], 2)
+        })
+    return result
