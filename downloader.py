@@ -609,8 +609,11 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         loader_stream = fetch_loader_to_url(clean_url, quality, progress_callback, cancel_check_callback)
         if loader_stream:
             download_direct_url(loader_stream, out_path, progress_callback, cancel_check_callback)
-            out_path = ensure_h264_for_ios(out_path)
-            out_path = compress_video_for_bot_api(out_path)
+            if time_range:
+                out_path = trim_local_file(out_path, time_range)
+            else:
+                out_path = ensure_h264_for_ios(out_path)
+                out_path = compress_video_for_bot_api(out_path)
             return out_path
 
     # 4. Резервное скачивание через yt_dlp с незаблокированными клиентами (android_creator, tv_embedded)
@@ -699,13 +702,6 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
                 'no_warnings': True,
             }
             
-        if time_range:
-            parts = time_range.split('-')
-            start_s = parse_time(parts[0].strip('*'))
-            end_s = parse_time(parts[1])
-            ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, [(start_s, end_s)])
-            ydl_opts['force_keyframes_at_cuts'] = True
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 info = ydl.extract_info(clean_url, download=True)
@@ -724,10 +720,15 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
                             except Exception:
                                 pass
                             final_path = mp3_path
+                        if time_range:
+                            final_path = trim_local_file(final_path, time_range)
                         return final_path
                         
-                    final_path = ensure_h264_for_ios(final_path)
-                    final_path = compress_video_for_bot_api(final_path)
+                    if time_range:
+                        final_path = trim_local_file(final_path, time_range)
+                    else:
+                        final_path = ensure_h264_for_ios(final_path)
+                        final_path = compress_video_for_bot_api(final_path)
                     return final_path
             except yt_dlp.utils.DownloadCancelled:
                 logger.info("Скачивание остановлено пользователем.")

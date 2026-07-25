@@ -382,10 +382,19 @@ async def process_local_trim_input(message: types.Message, state: FSMContext):
         
         caption = f"✂️ **Вырезанный фрагмент** [{time_range}]"
         
-        if f_info['media_type'] == 'audio':
-            await bot.send_audio(chat_id=message.from_user.id, audio=types.FSInputFile(trimmed_path), caption=caption, parse_mode="Markdown")
+        if os.path.getsize(trimmed_path) <= 49 * 1024 * 1024:
+            try:
+                if f_info['media_type'] == 'audio':
+                    await bot.send_audio(chat_id=message.from_user.id, audio=types.FSInputFile(trimmed_path), caption=caption, parse_mode="Markdown")
+                else:
+                    await bot.send_video(chat_id=message.from_user.id, video=types.FSInputFile(trimmed_path), caption=caption, parse_mode="Markdown")
+            except Exception as se:
+                if "file is too big" in str(se).lower() or "file_too_large" in str(se).lower():
+                    await helper.send_large_file(chat_id=message.from_user.id, file_path=trimmed_path, caption=caption)
+                else:
+                    raise se
         else:
-            await bot.send_video(chat_id=message.from_user.id, video=types.FSInputFile(trimmed_path), caption=caption, parse_mode="Markdown")
+            await helper.send_large_file(chat_id=message.from_user.id, file_path=trimmed_path, caption=caption)
             
         database.log_download(message.from_user.id, "telegram_file", f"Отрезок {time_range}", file_size_mb, "local_trim")
         await status_msg.delete()
@@ -807,8 +816,14 @@ async def process_trim_input(message: types.Message, state: FSMContext):
         file_size_mb = round(os.path.getsize(file_path) / (1024 * 1024), 2)
         caption = format_caption(title, prefix="✂️", suffix=time_range)
         
-        if os.path.getsize(file_path) <= 50 * 1024 * 1024:
-            await bot.send_video(chat_id=message.from_user.id, video=types.FSInputFile(file_path), caption=caption, parse_mode="HTML")
+        if os.path.getsize(file_path) <= 49 * 1024 * 1024:
+            try:
+                await bot.send_video(chat_id=message.from_user.id, video=types.FSInputFile(file_path), caption=caption, parse_mode="HTML")
+            except Exception as se:
+                if "file is too big" in str(se).lower() or "file_too_large" in str(se).lower():
+                    await helper.send_large_file(chat_id=message.from_user.id, file_path=file_path, caption=caption)
+                else:
+                    raise se
         else:
             await helper.send_large_file(chat_id=message.from_user.id, file_path=file_path, caption=caption)
             
