@@ -251,11 +251,11 @@ def format_upload_date(date_str) -> str:
 def _execute_ytsearch(search_term: str) -> list:
     """Безопасное выполнение поиска по YouTube с поддержкой антибот-клиентов и cookies"""
     client_combos = [
-        ['android_vr'],
-        ['tv_embedded'],
-        ['android_embedded'],
+        ['mweb'],
+        ['android'],
+        ['ios'],
         ['web_embedded'],
-        ['ios']
+        ['android_vr']
     ]
     
     cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
