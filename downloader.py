@@ -160,12 +160,13 @@ def get_video_info(url: str) -> dict:
         except Exception as oe_err:
             logger.warning(f"⚠️ OEmbed API недоступен: {oe_err}")
 
-    # 3. Безопасные клиенты YouTube (android_creator, tv_embedded, android_embedded)
+    # 3. Безопасные клиенты YouTube
     client_combos = [
         ['android_vr'],
         ['tv_embedded'],
         ['android_embedded'],
-        ['web_embedded']
+        ['android'],
+        ['ios']
     ]
     
     last_exc = None
@@ -254,9 +255,8 @@ def _execute_ytsearch(search_term: str) -> list:
         ['android_vr'],
         ['tv_embedded'],
         ['android_embedded'],
-        ['web_embedded'],
-        ['ios'],
-        ['mweb']
+        ['android'],
+        ['ios']
     ]
     
     cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
@@ -291,26 +291,7 @@ def _execute_ytsearch(search_term: str) -> list:
             logger.warning(f"⚠️ Ошибка поиска у клиента {combo}: {e}")
             continue
 
-    # Fallback на базовый поиск, если комбинации клиентов не принесли результатов
-    ydl_opts_fallback = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': 'in_playlist',
-        'default_search': 'ytsearch',
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    }
-    if os.path.exists(cookie_path):
-        ydl_opts_fallback['cookiefile'] = cookie_path
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
-            info = ydl.extract_info(search_term, download=False)
-            return info.get('entries', []) if info else []
-    except Exception as e:
-        logger.error(f"❌ Ошибка выполнения fallback-поиска YouTube: {e}")
-        return []
+    return []
 
 def search_music(query: str, limit: int = 50) -> list:
     """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора (до 50 результатов)"""
@@ -654,9 +635,8 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         ['android_vr'],
         ['tv_embedded'],
         ['android_embedded'],
-        ['web_embedded'],
-        ['ios'],
-        ['mweb']
+        ['android'],
+        ['ios']
     ]
 
     last_error = None
@@ -695,7 +675,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         else:
             ydl_opts = {
                 **common_opts,
-                'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
+                'format': f'b[height<={height}]/best[height<={height}]/bestvideo[height<={height}]+bestaudio/best',
                 'merge_output_format': 'mp4',
                 'outtmpl': out_template,
                 'progress_hooks': [ytdlp_progress_hook],
