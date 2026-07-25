@@ -69,7 +69,10 @@ def fetch_fast_twitter(url: str) -> dict | None:
 
 def fetch_loader_to_url(video_url: str, quality: str = '1080p') -> str | None:
     """Обход блокировок YouTube через автономный движок Loader.to"""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://loader.to/'
+    }
     
     target_formats = ['1080', '720', '480', '360']
     if quality == '720p':
@@ -87,9 +90,9 @@ def fetch_loader_to_url(video_url: str, quality: str = '1080p') -> str | None:
                 d1 = r1.json()
                 progress_url = d1.get('progress_url')
                 if progress_url:
-                    for _ in range(4):
-                        time.sleep(0.8)
-                        r2 = requests.get(progress_url, headers=headers, timeout=3)
+                    for _ in range(12):
+                        time.sleep(1.2)
+                        r2 = requests.get(progress_url, headers=headers, timeout=5)
                         if r2.status_code == 200:
                             d2 = r2.json()
                             d_url = d2.get('download_url')
