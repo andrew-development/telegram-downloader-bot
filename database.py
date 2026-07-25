@@ -3,12 +3,32 @@ import os
 from urllib.parse import urlparse
 import config
 
+import json
+
 if os.name == 'posix':
     data_dir = os.environ.get("DATA_DIR") or "/tmp"
 else:
     data_dir = os.environ.get("DATA_DIR") or os.path.dirname(__file__)
 
 DB_PATH = os.path.abspath(os.path.join(data_dir, "bot_database.db"))
+APPROVED_FILE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "approved_users.json"))
+
+def _get_approved_from_file() -> set:
+    if os.path.exists(APPROVED_FILE_PATH):
+        try:
+            with open(APPROVED_FILE_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return set(data.get('approved_ids', []))
+        except Exception:
+            pass
+    return set()
+
+def _save_approved_to_file(approved_ids: set):
+    try:
+        with open(APPROVED_FILE_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'approved_ids': sorted(list(approved_ids))}, f, indent=2)
+    except Exception as e:
+        print(f"⚠️ Ошибка записи approved_users.json: {e}")
 
 def init_db():
     """Инициализация базы данных и автоматическая миграция колонок"""
@@ -68,6 +88,15 @@ def init_db():
             VALUES (?, 'admin', 'Admin', 1)
             ON CONFLICT(user_id) DO UPDATE SET is_approved = 1
         """, (admin_id,))
+
+    # Автоматически восстанавливаем всех одобренных пользователей из файла approved_users.json
+    file_approved = _get_approved_from_file()
+    for uid in file_approved:
+        cursor.execute("""
+            INSERT INTO users (user_id, is_approved)
+            VALUES (?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET is_approved = 1
+        """, (uid,))
         
     conn.commit()
     conn.close()
@@ -91,7 +120,12 @@ def get_pending_download(req_id: str) -> dict:
 
 def add_user(user_id: int, username: str, first_name: str) -> bool:
     is_admin = user_id in config.ADMIN_IDS
-    default_approved = 1 if is_admin else 0
+    file_approved = _get_approved_from_file()
+    
+    if is_admin or user_id in file_approved:
+        default_approved = 1
+    else:
+        default_approved = 0
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -106,18 +140,28 @@ def add_user(user_id: int, username: str, first_name: str) -> bool:
         """, (user_id, username, first_name, default_approved))
         conn.commit()
         conn.close()
+        if default_approved == 1:
+            file_approved.add(user_id)
+            _save_approved_to_file(file_approved)
+            return True
         return is_admin
     else:
         cursor.execute("""
             UPDATE users SET username = ?, first_name = ? WHERE user_id = ?
         """, (username, first_name, user_id))
         conn.commit()
-        approved = bool(row[0]) or is_admin
+        approved = bool(row[0]) or is_admin or (user_id in file_approved)
+        if approved and user_id not in file_approved:
+            file_approved.add(user_id)
+            _save_approved_to_file(file_approved)
         conn.close()
         return approved
 
 def is_user_approved(user_id: int) -> bool:
     if user_id in config.ADMIN_IDS:
+        return True
+    file_approved = _get_approved_from_file()
+    if user_id in file_approved:
         return True
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -129,9 +173,17 @@ def is_user_approved(user_id: int) -> bool:
 def approve_user(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET is_approved = 1 WHERE user_id = ?", (user_id,))
+    cursor.execute("""
+        INSERT INTO users (user_id, is_approved)
+        VALUES (?, 1)
+        ON CONFLICT(user_id) DO UPDATE SET is_approved = 1
+    """, (user_id,))
     conn.commit()
     conn.close()
+    
+    file_approved = _get_approved_from_file()
+    file_approved.add(user_id)
+    _save_approved_to_file(file_approved)
 
 def reject_user(user_id: int):
     conn = sqlite3.connect(DB_PATH)
@@ -139,6 +191,10 @@ def reject_user(user_id: int):
     cursor.execute("UPDATE users SET is_approved = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
+    
+    file_approved = _get_approved_from_file()
+    file_approved.discard(user_id)
+    _save_approved_to_file(file_approved)
 
 def create_access_code(code: str, created_by: int):
     conn = sqlite3.connect(DB_PATH)
