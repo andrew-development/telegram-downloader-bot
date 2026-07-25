@@ -558,6 +558,36 @@ def download_direct_url(direct_url: str, output_path: str, progress_callback=Non
                     })
     return output_path
 
+def download_youtube_pytubefix(video_url: str, quality: str, out_path: str, progress_callback=None, cancel_check_callback=None) -> str | None:
+    """Прямое выкачивание YouTube видеофайла через обходчик pytubefix без блокировок авторизации"""
+    try:
+        from pytubefix import YouTube
+        logger.info(f"🚀 Попытка выгрузки YouTube через pytubefix ({quality})...")
+        yt = YouTube(video_url, client='ANDROID_VR')
+        
+        if str(quality).lower() == 'mp3':
+            stream = yt.streams.filter(only_audio=True).first()
+        else:
+            clean_q = str(quality).lower()
+            stream = yt.streams.filter(res=clean_q, file_extension='mp4').first()
+            if not stream:
+                stream = yt.streams.filter(progressive=True, file_extension='mp4').first()
+            if not stream:
+                stream = yt.streams.get_highest_resolution()
+                
+        if not stream:
+            return None
+            
+        out_dir = os.path.dirname(out_path)
+        out_name = os.path.basename(out_path)
+        res_file = stream.download(output_path=out_dir, filename=out_name)
+        if os.path.exists(res_file) and os.path.getsize(res_file) > 0:
+            logger.info(f"✅ Успешная выгрузка YouTube через pytubefix: {res_file}")
+            return res_file
+    except Exception as e:
+        logger.warning(f"⚠️ pytubefix выгрузка не удалась: {e}")
+    return None
+
 def download_media(url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None, time_range: str = None) -> str:
     """Скачивает медиа по ссылке с умным выбором движка, отслеживанием прогресса и отмены"""
     clean_url = resolve_redirect_url(url)
@@ -582,8 +612,19 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             out_path = compress_video_for_bot_api(out_path)
             return out_path
 
-    # 3. Автономная выгрузка YouTube через Loader.to (Полный обход IP блокировок YouTube)
+    # 3. Автономная выгрузка YouTube через pytubefix и Loader.to (Полный обход IP блокировок YouTube)
     if 'youtube.com' in clean_url or 'youtu.be' in clean_url:
+        pf_file = download_youtube_pytubefix(clean_url, quality, out_path, progress_callback, cancel_check_callback)
+        if pf_file:
+            if quality == 'mp3' and not pf_file.lower().endswith('.mp3'):
+                pf_file = convert_local_to_mp3(pf_file)
+            if time_range:
+                pf_file = trim_local_file(pf_file, time_range)
+            else:
+                pf_file = ensure_h264_for_ios(pf_file)
+                pf_file = compress_video_for_bot_api(pf_file)
+            return pf_file
+
         loader_stream = fetch_loader_to_url(clean_url, quality, progress_callback, cancel_check_callback)
         if loader_stream:
             download_direct_url(loader_stream, out_path, progress_callback, cancel_check_callback)
