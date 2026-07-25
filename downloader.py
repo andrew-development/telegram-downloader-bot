@@ -67,23 +67,30 @@ def fetch_fast_twitter(url: str) -> dict | None:
         logger.warning(f"⚠️ TwitSave API недоступен: {e}")
     return None
 
-def fetch_loader_to_url(video_url: str, quality: str = '1080p') -> str | None:
+def fetch_loader_to_url(video_url: str, quality: str = '1080p', progress_callback=None, cancel_check_callback=None) -> str | None:
     """Обход блокировок YouTube через автономный движок Loader.to"""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Referer': 'https://loader.to/'
     }
     
-    target_formats = ['1080', '720', '480', '360']
-    if quality == '720p':
-        target_formats = ['720', '1080', '480', '360']
-    elif quality == '480p':
-        target_formats = ['480', '720', '360']
-    elif quality == 'mp3':
+    clean_q = str(quality).lower().replace('p', '').strip()
+    if clean_q == '360':
+        target_formats = ['360', '480', '720']
+    elif clean_q == '480':
+        target_formats = ['480', '360', '720']
+    elif clean_q == '720':
+        target_formats = ['720', '1080', '480']
+    elif clean_q == 'mp3':
         target_formats = ['mp3']
+    else:
+        target_formats = ['1080', '720', '480', '360']
 
     for fmt in target_formats:
         try:
+            if cancel_check_callback and cancel_check_callback():
+                raise DownloadCancelledError("Отменено.")
+
             logger.info(f"🚀 Попытка выгрузки YouTube через Loader.to (формат {fmt})...")
             r1 = requests.get(f'https://loader.to/ajax/download.php?format={fmt}&url={video_url}', headers=headers, timeout=5)
             if r1.status_code == 200:
@@ -91,14 +98,29 @@ def fetch_loader_to_url(video_url: str, quality: str = '1080p') -> str | None:
                 progress_url = d1.get('progress_url')
                 if progress_url:
                     for _ in range(12):
-                        time.sleep(1.2)
+                        if cancel_check_callback and cancel_check_callback():
+                            raise DownloadCancelledError("Отменено.")
+                        time.sleep(1.0)
                         r2 = requests.get(progress_url, headers=headers, timeout=5)
                         if r2.status_code == 200:
                             d2 = r2.json()
+                            raw_prog = d2.get('progress', 0) or 0
+                            pct = round(raw_prog / 10, 1) if raw_prog > 0 else 0
+                            if pct > 100:
+                                pct = 100.0
+                            if progress_callback and pct > 0:
+                                progress_callback({
+                                    'percent': pct,
+                                    'downloaded_mb': 0,
+                                    'total_mb': 0,
+                                    'speed_mb': 0
+                                })
                             d_url = d2.get('download_url')
                             if d_url:
                                 logger.info(f"✅ Успешно получен прямой поток Loader.to ({fmt})!")
                                 return d_url
+        except DownloadCancelledError as ce:
+            raise ce
         except Exception as e:
             logger.warning(f"⚠️ Loader.to ({fmt}) не ответил: {e}")
             continue
@@ -576,7 +598,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
 
     # 3. Автономная выгрузка YouTube через Loader.to (Полный обход IP блокировок YouTube)
     if 'youtube.com' in clean_url or 'youtu.be' in clean_url:
-        loader_stream = fetch_loader_to_url(clean_url, quality)
+        loader_stream = fetch_loader_to_url(clean_url, quality, progress_callback, cancel_check_callback)
         if loader_stream:
             download_direct_url(loader_stream, out_path, progress_callback, cancel_check_callback)
             out_path = ensure_h264_for_ios(out_path)

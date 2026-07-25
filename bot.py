@@ -873,12 +873,25 @@ async def cb_download(callback: types.CallbackQuery):
             t_mb = p['total_mb']
             speed = p['speed_mb']
             
-            progress_text = (
-                f"⏳ Скачиваю <b>{safe_title[:40]}</b> [{quality}]\n\n"
-                f"📊 Прогресс: <b>{percent:.1f}%</b>\n"
-                f"📦 Загружено: <b>{d_mb} МБ</b> / <b>{t_mb} МБ</b>\n"
-                f"⚡ Скорость: <b>{speed} МБ/с</b>"
-            )
+            if percent > 0 and t_mb > 0:
+                progress_text = (
+                    f"⏳ Скачиваю <b>{safe_title[:40]}</b> [{quality}]\n\n"
+                    f"📊 Прогресс: <b>{percent:.1f}%</b>\n"
+                    f"📦 Загружено: <b>{d_mb} МБ</b> / <b>{t_mb} МБ</b>\n"
+                    f"⚡ Скорость: <b>{speed} МБ/с</b>"
+                )
+            elif percent > 0:
+                progress_text = (
+                    f"⏳ Скачиваю <b>{safe_title[:40]}</b> [{quality}]\n\n"
+                    f"📊 Подготовка потока: <b>{percent:.1f}%</b>\n"
+                    f"⚡ Обработка видео..."
+                )
+            else:
+                progress_text = (
+                    f"⏳ Скачиваю <b>{safe_title[:40]}</b> [{quality}]\n\n"
+                    f"📦 Загружено: <b>{d_mb} МБ</b>\n"
+                    f"⚡ Скорость: <b>{speed} МБ/с</b>"
+                )
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
