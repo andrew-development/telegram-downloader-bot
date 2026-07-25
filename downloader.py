@@ -223,11 +223,50 @@ def format_upload_date(date_str) -> str:
     except Exception:
         return "Неизвестно"
 
-def search_music(query: str, limit: int = 50) -> list:
-    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора (до 50 результатов)"""
-    query = query.strip()
-    search_term = f"ytsearch{limit}:{query} audio"
-    ydl_opts = {
+def _execute_ytsearch(search_term: str) -> list:
+    """Безопасное выполнение поиска по YouTube с поддержкой антибот-клиентов и cookies"""
+    client_combos = [
+        ['android_vr'],
+        ['tv_embedded'],
+        ['android_embedded'],
+        ['web_embedded'],
+        ['ios']
+    ]
+    
+    cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    
+    for combo in client_combos:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': 'in_playlist',
+            'default_search': 'ytsearch',
+            'nocheckcertificate': True,
+            'geo_bypass': True,
+            'js_runtimes': {'node': {}},
+            'socket_timeout': 10,
+            'retries': 2,
+            'extractor_args': {
+                'youtube': {'player_client': combo}
+            },
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        }
+        if os.path.exists(cookie_path):
+            ydl_opts['cookiefile'] = cookie_path
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(search_term, download=False)
+                entries = info.get('entries', []) if info else []
+                if entries:
+                    logger.info(f"⚡ Поиск успешно выполнен клиентом {combo}: найдено {len(entries)} элементов")
+                    return entries
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка поиска у клиента {combo}: {e}")
+            continue
+
+    # Fallback на базовый поиск, если комбинации клиентов не принесли результатов
+    ydl_opts_fallback = {
         'quiet': True,
         'no_warnings': True,
         'extract_flat': 'in_playlist',
@@ -236,30 +275,52 @@ def search_music(query: str, limit: int = 50) -> list:
         'geo_bypass': True,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
+    if os.path.exists(cookie_path):
+        ydl_opts_fallback['cookiefile'] = cookie_path
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
             info = ydl.extract_info(search_term, download=False)
-            results = []
-            entries = info.get('entries', [])
-            for entry in entries:
-                if entry:
-                    v_id = entry.get('id')
-                    title = entry.get('title', 'Без названия')
-                    uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Неизвестный исполнитель'
-                    dur_str = format_duration_str(entry.get('duration'))
-                    views_str = format_views_count(entry.get('view_count'))
-                    upload_date_str = format_upload_date(entry.get('upload_date'))
-                    results.append({
-                        'id': v_id,
-                        'title': title,
-                        'uploader': uploader,
-                        'duration_str': dur_str,
-                        'views_str': views_str,
-                        'upload_date_str': upload_date_str,
-                        'url': f"https://www.youtube.com/watch?v={v_id}",
-                        'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
-                    })
-            return results
+            return info.get('entries', []) if info else []
+    except Exception as e:
+        logger.error(f"❌ Ошибка выполнения fallback-поиска YouTube: {e}")
+        return []
+
+def search_music(query: str, limit: int = 50) -> list:
+    """Интеллектуальный опечаткоустойчивый поиск музыки (MP3) с метаданными автора (до 50 результатов)"""
+    query = query.strip()
+    search_term = f"ytsearch{limit}:{query} audio"
+    try:
+        entries = _execute_ytsearch(search_term)
+        results = []
+        for entry in entries:
+            if entry:
+                v_id = entry.get('id')
+                if not v_id:
+                    continue
+                if not re.match(r'^[a-zA-Z0-9_-]{11}$', str(v_id)):
+                    url_cand = entry.get('url') or entry.get('webpage_url') or ''
+                    m = re.search(r'(?:v=|shorts/|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})', str(url_cand))
+                    if m:
+                        v_id = m.group(1)
+                    else:
+                        continue
+                title = entry.get('title', 'Без названия')
+                uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Неизвестный исполнитель'
+                dur_str = format_duration_str(entry.get('duration'))
+                views_str = format_views_count(entry.get('view_count'))
+                upload_date_str = format_upload_date(entry.get('upload_date'))
+                results.append({
+                    'id': v_id,
+                    'title': title,
+                    'uploader': uploader,
+                    'duration_str': dur_str,
+                    'views_str': views_str,
+                    'upload_date_str': upload_date_str,
+                    'url': f"https://www.youtube.com/watch?v={v_id}",
+                    'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+                })
+        return results
     except Exception as e:
         logger.error(f"Ошибка поиска музыки: {e}")
         return []
@@ -268,39 +329,37 @@ def search_music_videos(query: str, limit: int = 50) -> list:
     """Опечаткоустойчивый поиск официальных видеоклипов с авторами и превью (до 50 результатов)"""
     query = query.strip()
     search_term = f"ytsearch{limit}:{query} official music video"
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': 'in_playlist',
-        'default_search': 'ytsearch',
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    }
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_term, download=False)
-            results = []
-            entries = info.get('entries', [])
-            for entry in entries:
-                if entry:
-                    v_id = entry.get('id')
-                    title = entry.get('title', 'Без названия')
-                    uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Музыкальный канал'
-                    dur_str = format_duration_str(entry.get('duration'))
-                    views_str = format_views_count(entry.get('view_count'))
-                    upload_date_str = format_upload_date(entry.get('upload_date'))
-                    results.append({
-                        'id': v_id,
-                        'title': title,
-                        'uploader': uploader,
-                        'duration_str': dur_str,
-                        'views_str': views_str,
-                        'upload_date_str': upload_date_str,
-                        'url': f"https://www.youtube.com/watch?v={v_id}",
-                        'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
-                    })
-            return results
+        entries = _execute_ytsearch(search_term)
+        results = []
+        for entry in entries:
+            if entry:
+                v_id = entry.get('id')
+                if not v_id:
+                    continue
+                if not re.match(r'^[a-zA-Z0-9_-]{11}$', str(v_id)):
+                    url_cand = entry.get('url') or entry.get('webpage_url') or ''
+                    m = re.search(r'(?:v=|shorts/|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})', str(url_cand))
+                    if m:
+                        v_id = m.group(1)
+                    else:
+                        continue
+                title = entry.get('title', 'Без названия')
+                uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Музыкальный канал'
+                dur_str = format_duration_str(entry.get('duration'))
+                views_str = format_views_count(entry.get('view_count'))
+                upload_date_str = format_upload_date(entry.get('upload_date'))
+                results.append({
+                    'id': v_id,
+                    'title': title,
+                    'uploader': uploader,
+                    'duration_str': dur_str,
+                    'views_str': views_str,
+                    'upload_date_str': upload_date_str,
+                    'url': f"https://www.youtube.com/watch?v={v_id}",
+                    'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+                })
+        return results
     except Exception as e:
         logger.error(f"Ошибка поиска видеоклипов: {e}")
         return []
@@ -312,39 +371,37 @@ def search_media(platform: str, query: str, media_type: str = 'video', limit: in
     if media_type == 'photo':
         search_term = f"ytsearch{limit}:{query} photo thumbnail"
 
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': 'in_playlist',
-        'default_search': 'ytsearch',
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    }
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_term, download=False)
-            results = []
-            entries = info.get('entries', [])
-            for entry in entries:
-                if entry:
-                    v_id = entry.get('id')
-                    title = entry.get('title', 'Без названия')
-                    uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Автор не указан'
-                    dur_str = format_duration_str(entry.get('duration'))
-                    views_str = format_views_count(entry.get('view_count'))
-                    upload_date_str = format_upload_date(entry.get('upload_date'))
-                    results.append({
-                        'id': v_id,
-                        'title': title,
-                        'uploader': uploader,
-                        'duration_str': dur_str,
-                        'views_str': views_str,
-                        'upload_date_str': upload_date_str,
-                        'url': f"https://www.youtube.com/watch?v={v_id}",
-                        'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
-                    })
-            return results
+        entries = _execute_ytsearch(search_term)
+        results = []
+        for entry in entries:
+            if entry:
+                v_id = entry.get('id')
+                if not v_id:
+                    continue
+                if not re.match(r'^[a-zA-Z0-9_-]{11}$', str(v_id)):
+                    url_cand = entry.get('url') or entry.get('webpage_url') or ''
+                    m = re.search(r'(?:v=|shorts/|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})', str(url_cand))
+                    if m:
+                        v_id = m.group(1)
+                    else:
+                        continue
+                title = entry.get('title', 'Без названия')
+                uploader = entry.get('uploader') or entry.get('channel') or entry.get('uploader_id') or 'Автор не указан'
+                dur_str = format_duration_str(entry.get('duration'))
+                views_str = format_views_count(entry.get('view_count'))
+                upload_date_str = format_upload_date(entry.get('upload_date'))
+                results.append({
+                    'id': v_id,
+                    'title': title,
+                    'uploader': uploader,
+                    'duration_str': dur_str,
+                    'views_str': views_str,
+                    'upload_date_str': upload_date_str,
+                    'url': f"https://www.youtube.com/watch?v={v_id}",
+                    'thumbnail': f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+                })
+        return results
     except Exception as e:
         logger.error(f"Ошибка поиска медиа ({platform}, {media_type}): {e}")
         return []

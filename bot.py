@@ -534,7 +534,7 @@ async def process_clip_query(message: types.Message, state: FSMContext):
     query = message.text.strip()
     status_msg = await message.answer(f"🔎 Ищу музыкальные видеоклипы: **{query}**...", parse_mode="Markdown")
     
-    results = await asyncio.to_thread(downloader.search_music_videos, query, 15)
+    results = await asyncio.to_thread(downloader.search_music_videos, query, 50)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу. Попробуйте уточнить запрос.")
         return
@@ -566,7 +566,7 @@ async def process_music_query(message: types.Message, state: FSMContext):
     query = message.text.strip()
     status_msg = await message.answer(f"🔎 Ищу аудиотреки: **{query}**...", parse_mode="Markdown")
     
-    results = await asyncio.to_thread(downloader.search_music, query, 15)
+    results = await asyncio.to_thread(downloader.search_music, query, 50)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу. Попробуйте уточнить название.")
         return
@@ -589,7 +589,7 @@ async def process_search_query(message: types.Message, state: FSMContext):
     query = message.text.strip()
     
     status_msg = await message.answer(f"🔎 Ищу видео: **{query}**...", parse_mode="Markdown")
-    results = await asyncio.to_thread(downloader.search_media, "YouTube", query, "video", 15)
+    results = await asyncio.to_thread(downloader.search_media, "YouTube", query, "video", 50)
     if not results:
         await status_msg.edit_text("❌ Ничего не найдено по вашему запросу.")
         return
