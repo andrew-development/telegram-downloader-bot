@@ -14,6 +14,26 @@ logger = logging.getLogger(__name__)
 class DownloadCancelledError(Exception):
     pass
 
+def ensure_fresh_youtube_cookies():
+    """Автоматически генерирует свежие валидные сессионные cookies.txt для сервера YouTube"""
+    cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    if not os.path.exists(cookie_path) or (time.time() - os.path.getmtime(cookie_path) > 6 * 3600):
+        try:
+            s = requests.Session()
+            s.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            })
+            s.get('https://www.youtube.com/', timeout=5)
+            if s.cookies:
+                with open(cookie_path, 'w', encoding='utf-8') as f:
+                    f.write('# Netscape HTTP Cookie File\n# https://curl.haxx.se/docs/http-cookies.html\n\n')
+                    for cookie in s.cookies:
+                        f.write(f'.youtube.com\tTRUE\t/\tFALSE\t1800000000\t{cookie.name}\t{cookie.value}\n')
+                logger.info("✅ Успешно автосформирован свежий cookies.txt для YouTube!")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка автосборки cookies.txt: {e}")
+
 def resolve_redirect_url(url: str) -> str:
     """Раскрывает и полностью очищает ссылки (YouTube, Shorts, youtu.be, Facebook share, TikTok vt, Twitter x.com)"""
     url = url.strip()
@@ -167,6 +187,7 @@ def get_video_info(url: str) -> dict:
         ['android_creator', 'android']
     ]
     
+    ensure_fresh_youtube_cookies()
     last_exc = None
     for combo in client_combos:
         ydl_opts = {
@@ -256,6 +277,7 @@ def _execute_ytsearch(search_term: str) -> list:
     ]
     
     cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    ensure_fresh_youtube_cookies()
     
     for combo in client_combos:
         ydl_opts = {
@@ -674,6 +696,7 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         ['android_creator', 'android']
     ]
 
+    ensure_fresh_youtube_cookies()
     last_error = None
     for combo in client_combos:
         common_opts = {
