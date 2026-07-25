@@ -162,9 +162,9 @@ def get_video_info(url: str) -> dict:
 
     # 3. Безопасные клиенты YouTube
     client_combos = [
-        ['android_vr'],
-        ['android'],
-        ['android_creator']
+        ['android', 'ios', 'android_vr'],
+        ['android_vr', 'tv_embedded'],
+        ['android_creator', 'android']
     ]
     
     last_exc = None
@@ -250,9 +250,9 @@ def format_upload_date(date_str) -> str:
 def _execute_ytsearch(search_term: str) -> list:
     """Безопасное выполнение поиска по YouTube с поддержкой антибот-клиентов и cookies"""
     client_combos = [
-        ['android_vr'],
-        ['android'],
-        ['android_creator']
+        ['android', 'ios', 'android_vr'],
+        ['android_vr', 'tv_embedded'],
+        ['android_creator', 'android']
     ]
     
     cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
@@ -628,9 +628,9 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
         height = 360
 
     client_combos = [
-        ['android_vr'],
-        ['android'],
-        ['android_creator']
+        ['android', 'ios', 'android_vr'],
+        ['android_vr', 'tv_embedded'],
+        ['android_creator', 'android']
     ]
 
     last_error = None
