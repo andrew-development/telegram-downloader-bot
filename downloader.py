@@ -467,7 +467,7 @@ def get_video_dimensions(file_path: str) -> tuple:
     return None, None
 
 def ensure_h264_for_ios(file_path: str) -> str:
-    """Конвертирует AV1/VP9 (которые заставляют iPhone показывать статичный кадр) в H.264"""
+    """Обеспечивает кодек H.264 (yuv420p) и +faststart (moov atom в начале файла) для 100% проигрывания в Telegram Desktop, веб-браузерах и iOS"""
     if not os.path.exists(file_path):
         return file_path
     ext = os.path.splitext(file_path)[1].lower()
@@ -485,20 +485,28 @@ def ensure_h264_for_ios(file_path: str) -> str:
         res_probe = subprocess.run(cmd_probe, capture_output=True, text=True)
         codec = res_probe.stdout.strip().lower()
         
+        out_path = os.path.splitext(file_path)[0] + "_faststart.mp4"
+        
         if codec == 'h264':
-            return file_path
+            # Быстро перемещаем moov atom в начало файла без перекодирования видео (stream copy)
+            cmd = [
+                'ffmpeg', '-y', '-i', file_path,
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                out_path
+            ]
+        else:
+            logger.info(f"Кодек '{codec}' заставляет устройства зависать. Конвертирую в H.264 с +faststart...")
+            cmd = [
+                'ffmpeg', '-y', '-i', file_path,
+                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
+                '-movflags', '+faststart',
+                '-preset', 'ultrafast',
+                '-c:a', 'aac',
+                out_path
+            ]
             
-        logger.info(f"Кодек '{codec}' заставляет iPhone зависать. Быстро конвертирую в H.264...")
-        out_path = os.path.splitext(file_path)[0] + "_h264.mp4"
-        cmd = [
-            'ffmpeg', '-y', '-i', file_path,
-            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main',
-            '-movflags', '+faststart',
-            '-preset', 'ultrafast',
-            '-c:a', 'copy',
-            out_path
-        ]
         res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
             try:
@@ -507,7 +515,7 @@ def ensure_h264_for_ios(file_path: str) -> str:
                 pass
             return out_path
     except Exception as e:
-        logger.error(f"Ошибка проверки или конвертации в H.264: {e}")
+        logger.error(f"Ошибка проверки или добавления faststart/H.264: {e}")
         
     return file_path
 
