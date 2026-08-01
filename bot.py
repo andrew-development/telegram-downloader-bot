@@ -503,7 +503,107 @@ async def handle_link(message: types.Message):
     if not is_sub:
         await message.answer("⚠️ Для скачивания подпишитесь на каналы:", reply_markup=get_subscription_keyboard(channels))
         return
+
+    clean_url = downloader.resolve_redirect_url(url)
+    is_youtube = ('youtube.com' in clean_url or 'youtu.be' in clean_url)
+    
+    if not is_youtube:
+        # Для не-YouTube ссылок (Facebook, Instagram, Snapchat, TikTok и др.) — мгновенный запуск скачивания 480p без меню выбора
+        status_msg = await message.answer(
+            "⏳ Начинаю скачивание видео...",
+            reply_markup=get_main_reply_keyboard(user_id)
+        )
         
+        req_id = f"dl_{os.urandom(6).hex()}"
+        active_downloads[req_id] = {'cancelled': False}
+        
+        cancel_builder = InlineKeyboardBuilder()
+        cancel_builder.button(text="❌ Отменить", callback_data=f"cancel:{req_id}")
+        
+        last_update_time = [0]
+        safe_title = "Видео по вашей ссылке"
+        
+        def on_progress(p):
+            now = time.time()
+            if now - last_update_time[0] >= 2.0:
+                last_update_time[0] = now
+                percent = p['percent']
+                d_mb = p['downloaded_mb']
+                t_mb = p['total_mb']
+                speed = p['speed_mb']
+                
+                if percent > 0 and t_mb > 0:
+                    progress_text = (
+                        f"⏳ Скачиваю видео...\n\n"
+                        f"📊 Прогресс: <b>{percent:.1f}%</b>\n"
+                        f"📦 Загружено: <b>{d_mb} МБ</b> / <b>{t_mb} МБ</b>\n"
+                        f"⚡ Скорость: <b>{speed} МБ/с</b>"
+                    )
+                elif percent > 0:
+                    progress_text = (
+                        f"⏳ Скачиваю видео...\n\n"
+                        f"📊 Подготовка потока: <b>{percent:.1f}%</b>\n"
+                        f"⚡ Обработка видео..."
+                    )
+                else:
+                    progress_text = (
+                        f"⏳ Скачиваю видео...\n\n"
+                        f"📦 Загружено: <b>{d_mb} МБ</b>\n"
+                        f"⚡ Скорость: <b>{speed} МБ/с</b>"
+                    )
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            status_msg.edit_text(progress_text, reply_markup=cancel_builder.as_markup(), parse_mode="HTML"),
+                            loop
+                        )
+                except Exception:
+                    pass
+
+        def check_cancelled():
+            return active_downloads.get(req_id, {}).get('cancelled', False)
+
+        try:
+            file_path = await asyncio.to_thread(downloader.download_media, url, '480p', on_progress, check_cancelled)
+            if check_cancelled():
+                raise downloader.DownloadCancelledError("Отменено.")
+                
+            if not os.path.exists(file_path):
+                raise FileNotFoundError("Файл не найден на диске.")
+
+            file_size = os.path.getsize(file_path)
+            file_size_mb = round(file_size / (1024 * 1024), 2)
+            
+            caption = format_caption(safe_title, prefix="✅", suffix="480p")
+            
+            if file_size <= 49 * 1024 * 1024:
+                input_file = types.FSInputFile(file_path)
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.mp4', '.mkv', '.mov', '.avi']:
+                    await bot.send_video(chat_id=user_id, video=input_file, caption=caption, parse_mode="HTML")
+                else:
+                    await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="HTML")
+            else:
+                caption_helper = format_caption(safe_title, prefix="✅", suffix="480p (Помощник)")
+                success = await helper.send_large_file(chat_id=user_id, file_path=file_path, caption=caption_helper)
+                if not success:
+                    raise Exception("Не удалось отправить файл через юзербота.")
+                    
+            database.log_download(user_id, url, safe_title, file_size_mb, '480p')
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return
+        except Exception as e:
+            logger.error(f"Ошибка автоматического скачивания: {e}")
+            await status_msg.edit_text(f"❌ Ошибка скачивания видео. Проверьте ссылку.")
+            return
+
+    # Для YouTube ссылок — стандартный разбор с вызовом меню выбора качества
     status_msg = await message.answer(
         "🔍 Анализирую ссылку, подождите...",
         reply_markup=get_main_reply_keyboard(user_id)
