@@ -184,12 +184,14 @@ async def cmd_start(message: types.Message):
     if user_id in config.ADMIN_IDS:
         welcome_text += f"⚙️ `/admin` — Панель администратора\n"
         
+    welcome_text += "\nℹ️ *Примечание: Любые сообщения со значком ↗ под кнопками — это встроенная авто-реклама Telegram, бот её не рекомендует.*\n"
+        
     if not is_sub:
         welcome_text += "\n⚠️ Пожалуйста, подпишитесь на каналы ниже для доступа:"
-        await message.answer(welcome_text, reply_markup=get_subscription_keyboard(channels))
+        await message.answer(welcome_text, reply_markup=get_subscription_keyboard(channels), parse_mode="Markdown")
     else:
         welcome_text += "\n📥 Отправьте мне **ссылку**, **файл** или выберите команду в меню **Menu** (слева внизу)!"
-        await message.answer(welcome_text, reply_markup=get_main_reply_keyboard(user_id))
+        await message.answer(welcome_text, reply_markup=get_main_reply_keyboard(user_id), parse_mode="Markdown")
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -480,13 +482,14 @@ async def cb_local_mp3(callback: types.CallbackQuery):
 def format_caption(title: str, prefix: str = "✅", suffix: str = "") -> str:
     """Форматирует безопасный caption для Telegram (гарантированно <= 1000 символов)"""
     safe_t = html.escape(title)
-    overhead = len(prefix) + len(suffix) + 30
+    ad_note = "\n\nℹ️ <i>Блок со значком ↗ ниже — это авто-реклама Telegram.</i>"
+    overhead = len(prefix) + len(suffix) + len(ad_note) + 30
     max_len = 980 - overhead
     if len(safe_t) > max_len:
         safe_t = safe_t[:max_len - 3] + "..."
     if suffix:
-        return f"{prefix} <b>{safe_t}</b> [{suffix}]"
-    return f"{prefix} <b>{safe_t}</b>"
+        return f"{prefix} <b>{safe_t}</b> [{suffix}]{ad_note}"
+    return f"{prefix} <b>{safe_t}</b>{ad_note}"
 
 # --- ОБРАБОТКА ССЫЛОК И ПОИСКА ---
 
