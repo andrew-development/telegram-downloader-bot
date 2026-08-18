@@ -99,48 +99,13 @@ async def ensure_approved_access(event: types.Message | types.CallbackQuery) -> 
         user_id = event.from_user.id
         username = event.from_user.username or ""
         first_name = event.from_user.first_name or ""
-        target_msg = event.message
     else:
         user_id = event.from_user.id
         username = event.from_user.username or ""
         first_name = event.from_user.first_name or ""
-        target_msg = event
 
-    # АДМИНИСТРАТОР ВСЕГДА ОДОБРЕН БЕЗ КАКИХ-ЛИБО ПОДТВЕРЖДЕНИЙ
-    if user_id in config.ADMIN_IDS:
-        return True
-
-    is_approved = database.add_user(user_id, username, first_name)
-    if is_approved:
-        return True
-        
-    if target_msg:
-        await target_msg.answer(
-            "🔒 **Доступ ограничен.**\n\n"
-            "Ваш запрос на использование бота отправлен Администратору.\n"
-            "Пожалуйста, подождите подтверждения доступа.",
-            parse_mode="Markdown"
-        )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Разрешить доступ", callback_data=f"adm_allow:{user_id}")
-    builder.button(text="❌ Отклонить доступ", callback_data=f"adm_reject:{user_id}")
-    builder.adjust(2)
-    
-    user_mention = f"@{username}" if username else first_name
-    admin_text = (
-        f"🔔 **Новый запрос на доступ к боту!**\n\n"
-        f"👤 Пользователь: **{first_name}** ({user_mention})\n"
-        f"🆔 ID: `{user_id}`\n"
-    )
-    
-    for admin_id in config.ADMIN_IDS:
-        try:
-            await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
-        except Exception as e:
-            logger.error(f"Не удалось отправить уведомление админу {admin_id}: {e}")
-            
-    return False
+    database.add_user(user_id, username, first_name)
+    return True
 
 @dp.message(F.text == "🚀 Старт")
 async def msg_btn_start(message: types.Message):
@@ -186,6 +151,7 @@ async def cmd_start(message: types.Message):
         
     welcome_text += "\nℹ️ *Примечание: Любые сообщения со значком ↗ под кнопками — это встроенная авто-реклама Telegram, бот её не рекомендует.*\n"
         
+    is_sub, channels = await check_user_subscription(user_id)
     if not is_sub:
         welcome_text += "\n⚠️ Пожалуйста, подпишитесь на каналы ниже для доступа:"
         await message.answer(welcome_text, reply_markup=get_subscription_keyboard(channels), parse_mode="Markdown")

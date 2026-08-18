@@ -119,13 +119,7 @@ def get_pending_download(req_id: str) -> dict:
     return None
 
 def add_user(user_id: int, username: str, first_name: str) -> bool:
-    is_admin = user_id in config.ADMIN_IDS
     file_approved = _get_approved_from_file()
-    
-    if is_admin or user_id in file_approved:
-        default_approved = 1
-    else:
-        default_approved = 0
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -136,39 +130,26 @@ def add_user(user_id: int, username: str, first_name: str) -> bool:
     if row is None:
         cursor.execute("""
             INSERT INTO users (user_id, username, first_name, is_approved)
-            VALUES (?, ?, ?, ?)
-        """, (user_id, username, first_name, default_approved))
+            VALUES (?, ?, ?, 1)
+        """, (user_id, username, first_name))
         conn.commit()
         conn.close()
-        if default_approved == 1:
-            file_approved.add(user_id)
-            _save_approved_to_file(file_approved)
-            return True
-        return is_admin
+        file_approved.add(user_id)
+        _save_approved_to_file(file_approved)
+        return True
     else:
         cursor.execute("""
-            UPDATE users SET username = ?, first_name = ? WHERE user_id = ?
+            UPDATE users SET username = ?, first_name = ?, is_approved = 1 WHERE user_id = ?
         """, (username, first_name, user_id))
         conn.commit()
-        approved = bool(row[0]) or is_admin or (user_id in file_approved)
-        if approved and user_id not in file_approved:
+        if user_id not in file_approved:
             file_approved.add(user_id)
             _save_approved_to_file(file_approved)
         conn.close()
-        return approved
+        return True
 
 def is_user_approved(user_id: int) -> bool:
-    if user_id in config.ADMIN_IDS:
-        return True
-    file_approved = _get_approved_from_file()
-    if user_id in file_approved:
-        return True
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT is_approved FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return bool(row[0]) if row else False
+    return True
 
 def approve_user(user_id: int):
     conn = sqlite3.connect(DB_PATH)
