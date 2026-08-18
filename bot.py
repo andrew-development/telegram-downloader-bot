@@ -473,149 +473,112 @@ async def handle_link(message: types.Message):
         await message.answer("⚠️ Для скачивания подпишитесь на каналы:", reply_markup=get_subscription_keyboard(channels))
         return
 
-    clean_url = downloader.resolve_redirect_url(url)
-    is_youtube = ('youtube.com' in clean_url or 'youtu.be' in clean_url)
-    
-    if not is_youtube:
-        # Для не-YouTube ссылок (Facebook, Instagram, Snapchat, TikTok и др.) — мгновенный запуск скачивания 480p без меню выбора
-        status_msg = await message.answer(
-            "⏳ Анализирую и скачиваю видео...",
-            reply_markup=get_main_reply_keyboard(user_id)
-        )
-        
-        info = await asyncio.to_thread(downloader.get_video_info, url)
-        raw_title = info.get('title', 'Видео по вашей ссылке')
-        safe_title = html.escape(raw_title)
-        
-        req_id = f"dl_{os.urandom(6).hex()}"
-        active_downloads[req_id] = {'cancelled': False}
-        
-        cancel_builder = InlineKeyboardBuilder()
-        cancel_builder.button(text="❌ Отменить", callback_data=f"cancel:{req_id}")
-        
-        last_update_time = [0]
-        
-        def on_progress(p):
-            now = time.time()
-            if now - last_update_time[0] >= 2.0:
-                last_update_time[0] = now
-                percent = p['percent']
-                d_mb = p['downloaded_mb']
-                t_mb = p['total_mb']
-                speed = p['speed_mb']
-                
-                if percent > 0 and t_mb > 0:
-                    progress_text = (
-                        f"⏳ Скачиваю <b>{safe_title[:40]}</b> [480p]\n\n"
-                        f"📊 Прогресс: <b>{percent:.1f}%</b>\n"
-                        f"📦 Загружено: <b>{d_mb} МБ</b> / <b>{t_mb} МБ</b>\n"
-                        f"⚡ Скорость: <b>{speed} МБ/с</b>"
-                    )
-                elif percent > 0:
-                    progress_text = (
-                        f"⏳ Скачиваю <b>{safe_title[:40]}</b> [480p]\n\n"
-                        f"📊 Подготовка потока: <b>{percent:.1f}%</b>\n"
-                        f"⚡ Обработка видео..."
-                    )
-                else:
-                    progress_text = (
-                        f"⏳ Скачиваю <b>{safe_title[:40]}</b> [480p]\n\n"
-                        f"📦 Загружено: <b>{d_mb} МБ</b>\n"
-                        f"⚡ Скорость: <b>{speed} МБ/с</b>"
-                    )
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.run_coroutine_threadsafe(
-                            status_msg.edit_text(progress_text, reply_markup=cancel_builder.as_markup(), parse_mode="HTML"),
-                            loop
-                        )
-                except Exception:
-                    pass
-
-        def check_cancelled():
-            return active_downloads.get(req_id, {}).get('cancelled', False)
-
-        try:
-            file_path = await asyncio.to_thread(downloader.download_media, url, '480p', on_progress, check_cancelled)
-            if check_cancelled():
-                raise downloader.DownloadCancelledError("Отменено.")
-                
-            if not os.path.exists(file_path):
-                raise FileNotFoundError("Файл не найден на диске.")
-
-            file_size = os.path.getsize(file_path)
-            file_size_mb = round(file_size / (1024 * 1024), 2)
-            
-            caption = format_caption(raw_title, prefix="✅", suffix="480p")
-            
-            if file_size <= 49 * 1024 * 1024:
-                input_file = types.FSInputFile(file_path)
-                ext = os.path.splitext(file_path)[1].lower()
-                if ext in ['.mp4', '.mkv', '.mov', '.avi']:
-                    await bot.send_video(chat_id=user_id, video=input_file, caption=caption, parse_mode="HTML")
-                else:
-                    await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="HTML")
-            else:
-                caption_helper = format_caption(raw_title, prefix="✅", suffix="480p (Помощник)")
-                success = await helper.send_large_file(chat_id=user_id, file_path=file_path, caption=caption_helper)
-                if not success:
-                    raise Exception("Не удалось отправить файл через юзербота.")
-                    
-            database.log_download(user_id, url, raw_title, file_size_mb, '480p')
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            return
-        except Exception as e:
-            logger.error(f"Ошибка автоматического скачивания: {e}")
-            await status_msg.edit_text(f"❌ Ошибка скачивания видео. Проверьте ссылку.")
-            return
-
-    # Для YouTube ссылок — стандартный разбор с вызовом меню выбора качества
+    # Автоматическое мгновенное скачивание 480p для всех ссылок (YouTube, Facebook, Instagram, TikTok, Snapchat и др.)
     status_msg = await message.answer(
-        "🔍 Анализирую ссылку, подождите...",
+        "⏳ Анализирую и скачиваю видео (~480p)...",
         reply_markup=get_main_reply_keyboard(user_id)
     )
     
+    raw_title = "Видео по вашей ссылке"
     try:
         info = await asyncio.to_thread(downloader.get_video_info, url)
-        raw_title = info.get('title', 'Без названия')
+        if info and info.get('title'):
+            raw_title = info['title']
+    except Exception as e:
+        logger.warning(f"Не удалось предварительно получить заголовок: {e}")
         
-        req_id = f"dl_{os.urandom(6).hex()}"
-        pending_downloads[req_id] = {
-            'url': url,
-            'title': raw_title
-        }
-        database.save_pending_download(req_id, url, raw_title)
+    safe_title = html.escape(raw_title)
+    
+    req_id = f"dl_{os.urandom(6).hex()}"
+    active_downloads[req_id] = {'cancelled': False}
+    
+    cancel_builder = InlineKeyboardBuilder()
+    cancel_builder.button(text="❌ Отменить", callback_data=f"cancel:{req_id}")
+    
+    last_update_time = [0]
+    
+    def on_progress(p):
+        now = time.time()
+        if now - last_update_time[0] >= 2.0:
+            last_update_time[0] = now
+            percent = p.get('percent', 0)
+            d_mb = p.get('downloaded_mb', 0)
+            t_mb = p.get('total_mb', 0)
+            speed = p.get('speed_mb', 0)
+            
+            if percent > 0 and t_mb > 0:
+                progress_text = (
+                    f"⏳ Скачиваю <b>{safe_title[:40]}</b> [480p]\n\n"
+                    f"📊 Прогресс: <b>{percent:.1f}%</b>\n"
+                    f"📦 Загружено: <b>{d_mb} МБ</b> / <b>{t_mb} МБ</b>\n"
+                    f"⚡ Скорость: <b>{speed} МБ/с</b>"
+                )
+            elif percent > 0:
+                progress_text = (
+                    f"⏳ Скачиваю <b>{safe_title[:40]}</b> [480p]\n\n"
+                    f"📊 Подготовка потока: <b>{percent:.1f}%</b>\n"
+                    f"⚡ Обработка видео..."
+                )
+            else:
+                progress_text = (
+                    f"⏳ Скачиваю <b>{safe_title[:40]}</b> [480p]\n\n"
+                    f"📦 Загружено: <b>{d_mb} МБ</b>\n"
+                    f"⚡ Скорость: <b>{speed} МБ/с</b>"
+                )
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        status_msg.edit_text(progress_text, reply_markup=cancel_builder.as_markup(), parse_mode="HTML"),
+                        loop
+                    )
+            except Exception:
+                pass
+
+    def check_cancelled():
+        return active_downloads.get(req_id, {}).get('cancelled', False)
+
+    try:
+        file_path = await asyncio.to_thread(downloader.download_media, url, '480p', on_progress, check_cancelled)
+        if check_cancelled():
+            raise downloader.DownloadCancelledError("Отменено.")
+            
+        if not file_path or not os.path.exists(file_path):
+            raise FileNotFoundError("Файл не найден на диске.")
+
+        file_size = os.path.getsize(file_path)
+        file_size_mb = round(file_size / (1024 * 1024), 2)
         
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🎬 1080p (Высокое)", callback_data=f"q:{req_id}:1080p")
-        builder.button(text="🎬 720p (Среднее)", callback_data=f"q:{req_id}:720p")
-        builder.button(text="🎬 480p (Низкое)", callback_data=f"q:{req_id}:480p")
-        builder.button(text="🎬 360p (Эконом)", callback_data=f"q:{req_id}:360p")
-        builder.button(text="🎵 MP3 (Только Аудио)", callback_data=f"q:{req_id}:mp3")
-        builder.button(text="✂️ Вырезать фрагмент", callback_data=f"trim_init:{req_id}")
-        builder.button(text="🖼 Обложка (4K)", callback_data=f"thumb:{req_id}")
-        builder.adjust(2, 2, 2, 1)
+        caption = format_caption(raw_title, prefix="✅", suffix="480p")
         
-        caption = format_caption(raw_title, prefix="🎥", suffix="Выберите качество или действие:")
-        await message.answer(caption, reply_markup=builder.as_markup(), parse_mode="HTML")
-        
+        if file_size <= 49 * 1024 * 1024:
+            input_file = types.FSInputFile(file_path)
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext in ['.mp4', '.mkv', '.mov', '.avi']:
+                await bot.send_video(chat_id=user_id, video=input_file, caption=caption, parse_mode="HTML")
+            else:
+                await bot.send_document(chat_id=user_id, document=input_file, caption=caption, parse_mode="HTML")
+        else:
+            caption_helper = format_caption(raw_title, prefix="✅", suffix="480p (Помощник)")
+            success = await helper.send_large_file(chat_id=user_id, file_path=file_path, caption=caption_helper)
+            if not success:
+                raise Exception("Не удалось отправить файл через юзербота.")
+                
+        database.log_download(user_id, url, raw_title, file_size_mb, '480p')
         try:
             await status_msg.delete()
         except Exception:
             pass
-        
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        return
     except Exception as e:
-        logger.error(f"Ошибка разбора ссылки: {e}")
+        logger.error(f"Ошибка автоматического скачивания: {e}")
         try:
-            await status_msg.edit_text(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
+            await status_msg.edit_text(f"❌ Ошибка скачивания видео. Попробуйте еще раз или проверьте ссылку.")
         except Exception:
-            await message.answer(f"❌ Не удалось получить информацию о видео. Проверьте ссылку.")
+            pass
+        return
 
 @dp.message(Command("search"))
 @dp.message(F.text.contains("Поиск контента"))
