@@ -576,14 +576,14 @@ async def handle_link(message: types.Message):
         err_str = str(e).lower()
         logger.error(f"Ошибка автоматического скачивания: {e}")
         try:
-            if "registered users" in err_str or "private" in err_str or "login" in err_str:
+            if any(k in err_str for k in ["registered users", "private", "login", "cannot parse data", "facebook"]):
                 await status_msg.edit_text(
-                    "🔒 <b>Это приватное видео автора</b> (доступно только друзьям автора или в закрытой группе).\n\n"
-                    "💡 Общедоступные ролики скачиваются автоматически!",
+                    "🔒 <b>Это приватное видео автора</b> (доступно только для друзей автора или в закрытой группе Facebook).\n\n"
+                    "💡 Общедоступные ролики скачиваются моментально!",
                     parse_mode="HTML"
                 )
             else:
-                await status_msg.edit_text(f"❌ Не удалось скачать видео. Проверьте ссылку или попробуйте другую.")
+                await status_msg.edit_text("❌ Не удалось скачать видео. Проверьте ссылку или попробуйте другую.")
         except Exception:
             pass
         return
