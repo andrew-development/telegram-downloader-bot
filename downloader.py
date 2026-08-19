@@ -205,8 +205,14 @@ def get_video_info(url: str) -> dict:
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
-        if os.path.exists(cookie_path):
+        if os.path.exists(cookie_path) and ('youtube.com' in clean_url or 'youtu.be' in clean_url):
             ydl_opts['cookiefile'] = cookie_path
+            
+        if 'facebook.com' in clean_url or 'fb.watch' in clean_url:
+            ydl_opts['extractor_args'] = {'facebook': {'facebook_mobile': [True]}}
+            ydl_opts['http_headers'] = {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 [FBAN/EMA;FBLC/en_US;FBAV/400.0.0.0.0;]',
+            }
             
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -713,8 +719,14 @@ def download_media(url: str, quality: str = '1080p', progress_callback=None, can
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         cookie_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
-        if os.path.exists(cookie_path):
+        if os.path.exists(cookie_path) and ('youtube.com' in clean_url or 'youtu.be' in clean_url):
             common_opts['cookiefile'] = cookie_path
+
+        if 'facebook.com' in clean_url or 'fb.watch' in clean_url:
+            common_opts['extractor_args'] = {'facebook': {'facebook_mobile': [True]}}
+            common_opts['http_headers'] = {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 [FBAN/EMA;FBLC/en_US;FBAV/400.0.0.0.0;]',
+            }
 
         if quality == 'mp3':
             ydl_opts = {

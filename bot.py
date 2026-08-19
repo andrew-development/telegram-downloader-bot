@@ -573,9 +573,17 @@ async def handle_link(message: types.Message):
             os.remove(file_path)
         return
     except Exception as e:
+        err_str = str(e).lower()
         logger.error(f"Ошибка автоматического скачивания: {e}")
         try:
-            await status_msg.edit_text(f"❌ Ошибка скачивания видео. Попробуйте еще раз или проверьте ссылку.")
+            if "registered users" in err_str or "private" in err_str or "login" in err_str:
+                await status_msg.edit_text(
+                    "🔒 <b>Это приватное видео автора</b> (доступно только друзьям автора или в закрытой группе).\n\n"
+                    "💡 Общедоступные ролики скачиваются автоматически!",
+                    parse_mode="HTML"
+                )
+            else:
+                await status_msg.edit_text(f"❌ Не удалось скачать видео. Проверьте ссылку или попробуйте другую.")
         except Exception:
             pass
         return
